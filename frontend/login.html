@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧傷口照護系統 | 登入</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        /* 醫療風格主色調擴充 */
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { medical: { 500: '#0ea5e9', 600: '#0284c7' } }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+        <div class="bg-medical-500 py-6 text-center">
+            <h1 class="text-2xl font-bold text-white tracking-wider">智慧傷口照護系統</h1>
+            <p class="text-blue-100 mt-1 text-sm">臨床交班與 AI 輔助判定平台</p>
+        </div>
+
+        <div class="p-8">
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700">員工代碼 / 帳號</label>
+                    <input type="text" id="username" name="username" required 
+                        class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-medical-500 focus:border-medical-500 transition"
+                        placeholder="請輸入帳號 (例: N001)">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">密碼</label>
+                    <input type="password" id="password" name="password" required 
+                        class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-medical-500 focus:border-medical-500 transition"
+                        placeholder="請輸入密碼 (例: 123456)">
+                </div>
+
+                <div id="errorMessage" class="hidden text-red-500 text-sm font-medium text-center"></div>
+
+                <button type="submit" 
+                    class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-medical-500 hover:bg-medical-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-medical-500 transition">
+                    登入系統
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); // 防止表單重新載入網頁
+            
+            const usernameInput = document.getElementById('username').value;
+            const passwordInput = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMessage');
+            
+            errorDiv.classList.add('hidden'); // 隱藏錯誤訊息
+
+            // FastAPI 的 OAuth2PasswordRequestForm 預設要求使用 x-www-form-urlencoded 格式
+            const formData = new URLSearchParams();
+            formData.append('username', usernameInput);
+            formData.append('password', passwordInput);
+
+            try {
+                // 呼叫我們剛剛寫好的 FastAPI 登入端點
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // 登入成功：將 Token 與使用者資訊存入瀏覽器的 LocalStorage
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_info', JSON.stringify(data.user_info));
+                    
+                    alert(`登入成功！歡迎 ${data.user_info.full_name} (${data.user_info.role})`);
+                    
+                    // TODO: 依照角色 (admin, nurse, patient) 導向對應的專屬網頁
+                     //window.location.href = `/${data.user_info.role}_dashboard.html`;
+                     window.location.href = `${data.user_info.role}_dashboard.html`;
+                } else {
+                    // 登入失敗：顯示後端回傳的錯誤訊息 (例: 帳號或密碼錯誤)
+                    errorDiv.textContent = data.detail || '登入失敗，請稍後再試。';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                errorDiv.textContent = '無法連線至伺服器，請確認後端 API 是否已啟動。';
+                errorDiv.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人員帳號管理 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-900 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-6">
+                    <span class="text-white text-xl font-bold tracking-wider">系統管理控制台</span>
+                    <div class="hidden md:flex space-x-4">
+                        <a href="admin_dashboard.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">品質稽核總覽</a>
+                        <a href="admin_assignments.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">護病分配管理</a>
+                        <a href="admin_users.html" class="bg-medical-600 text-white px-3 py-2 rounded-md text-sm font-medium">人員帳號管理</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="adminNameDisplay" class="text-gray-400 text-sm border-l border-gray-600 pl-4 hidden sm:block"></span>
+                    <button onclick="logout()" class="text-gray-400 hover:text-white text-sm font-medium transition ml-4">登出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Left: Add User Form -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden h-fit">
+                <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-xl font-bold text-gray-800">新增系統人員</h2>
+                    <p class="text-sm text-gray-500 mt-1">請填寫基本資料以建立新帳號。</p>
+                </div>
+                
+                <form id="userForm" onsubmit="submitUser(event)" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">1. 選擇角色 *</label>
+                        <select id="userRole" required onchange="togglePatientFields()" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border bg-gray-50">
+                            <option value="nurse">護理師 (Nurse)</option>
+                            <option value="patient">病患 (Patient)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">2. 真實姓名 *</label>
+                        <input type="text" id="fullName" required placeholder="例如: 王小明" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">3. 帳號 / 員工代碼 *</label>
+                        <input type="text" id="username" required placeholder="例如: N003 或 P003" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">4. 登入密碼 *</label>
+                        <input type="password" id="password" required placeholder="設定初始密碼" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border">
+                    </div>
+                    
+                    <!-- Patient Only Fields -->
+                    <div id="patientFields" class="hidden space-y-4 pt-3 border-t border-gray-100">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">病床號碼</label>
+                            <input type="text" id="bedNumber" placeholder="例如: Bed 301-1" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">特殊病史 / 備註</label>
+                            <textarea id="medicalHistory" rows="3" placeholder="例如: 糖尿病、高血壓病史，左腳踝有慢性潰瘍..." class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-100">
+                        <button type="submit" class="w-full bg-medical-900 hover:bg-medical-800 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition">
+                            確認新增人員
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Right: User List -->
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-xl font-bold text-gray-800">目前系統人員清單</h2>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">角色</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">帳號</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">病床</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">建立時間</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody" class="bg-white divide-y divide-gray-200">
+                            <tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">載入中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
+
+    </main>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        if (!token || userInfo.role !== 'admin') window.location.href = 'login.html';
+        
+        document.getElementById('adminNameDisplay').textContent = `${userInfo.full_name} (管理員)`;
+
+        // 切換病患專屬欄位顯示
+        function togglePatientFields() {
+            const role = document.getElementById('userRole').value;
+            const patientFields = document.getElementById('patientFields');
+            if (role === 'patient') {
+                patientFields.classList.remove('hidden');
+            } else {
+                patientFields.classList.add('hidden');
+            }
+        }
+
+        // 撈取人員清單
+        async function fetchUsersList() {
+            try {
+                const res = await fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                const tbody = document.getElementById('usersTableBody');
+                tbody.innerHTML = '';
+
+                if (result.data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-gray-500">系統內尚無其他人員</td></tr>`;
+                    return;
+                }
+
+                result.data.forEach(item => {
+                    const roleBadge = item.role === 'nurse' 
+                        ? '<span class="px-2 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800">護理師</span>' 
+                        : '<span class="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800">病患</span>';
+                    
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">${roleBadge}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${item.full_name}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.username}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${item.bed_number || '—'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${item.created_at}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button onclick="deleteUser(${item.id}, '${item.full_name}')" class="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded transition">刪除</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (error) {
+                console.error("無法載入人員清單", error);
+            }
+        }
+
+        // 新增人員
+        async function submitUser(event) {
+            event.preventDefault();
+
+            const role = document.getElementById('userRole').value;
+            const fullName = document.getElementById('fullName').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const bedNumber = document.getElementById('bedNumber').value.trim();
+            const medicalHistory = document.getElementById('medicalHistory').value.trim();
+
+            if (!fullName || !username || !password) {
+                alert("請填寫所有必要欄位！");
+                return;
+            }
+
+            const bodyData = {
+                role: role,
+                full_name: fullName,
+                username: username,
+                password: password,
+                bed_number: role === 'patient' ? bedNumber : null,
+                medical_history: role === 'patient' ? medicalHistory : null
+            };
+
+            try {
+                const res = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bodyData)
+                });
+
+                const result = await res.json();
+
+                if (res.ok) {
+                    alert("✅ 人員帳號建立成功！");
+                    document.getElementById('userForm').reset();
+                    togglePatientFields();
+                    fetchUsersList(); // 重新整理清單
+                } else {
+                    alert(`建立失敗：${result.detail}`);
+                }
+            } catch (error) {
+                console.error("API 錯誤", error);
+                alert("無法連接伺服器！");
+            }
+        }
+
+        // 刪除人員
+        async function deleteUser(userId, name) {
+            if (!confirm(`確定要刪除「${name}」嗎？此操作會連帶刪除該員所有關聯的護病指派與臨床傷口紀錄，且無法復原！`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const result = await res.json();
+
+                if (res.ok) {
+                    alert("🗑️ 人員帳號已成功刪除！");
+                    fetchUsersList(); // 重新整理清單
+                } else {
+                    alert(`刪除失敗：${result.detail}`);
+                }
+            } catch (error) {
+                console.error("刪除錯誤", error);
+                alert("無法連接伺服器！");
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        // 頁面載入初始化
+        fetchUsersList();
+    </script>
+</body>
+</html>

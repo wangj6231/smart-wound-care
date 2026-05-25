@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理端稽核控制台 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-900 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-white text-xl font-bold tracking-wider">系統管理控制台</span>
+                </div>
+                <div class="flex items-center space-x-6">
+                    <div class="hidden md:flex space-x-4">
+                        <a href="admin_dashboard.html" class="bg-medical-600 text-white px-3 py-2 rounded-md text-sm font-medium">品質稽核總覽</a>
+                        <a href="admin_assignments.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">護病分配管理</a>
+                        <a href="admin_users.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">人員帳號管理</a>
+                    </div>
+                    <span id="adminNameDisplay" class="text-gray-400 text-sm border-l border-gray-600 pl-4 hidden sm:block"></span>
+                    <button onclick="logout()" class="text-gray-400 hover:text-white text-sm font-medium transition ml-4">登出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">醫療品質稽核總覽</h1>
+            <p class="mt-2 text-sm text-gray-600">檢視全院傷口照護紀錄，紅色標記代表 AI 與護理師判斷存在落差，需特別關注。</p>
+        </div>
+
+        <!-- 統計看板 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-5 text-white shadow-md hover:shadow-lg transition">
+                <p class="text-sm opacity-80 font-medium">總稽核件數</p>
+                <p id="totalCount" class="text-3xl font-bold mt-2">0</p>
+            </div>
+            <div class="bg-gradient-to-br from-rose-500 to-red-600 rounded-xl p-5 text-white shadow-md hover:shadow-lg transition">
+                <p class="text-sm opacity-80 font-medium">判定落差件數</p>
+                <p id="discrepancyCount" class="text-3xl font-bold mt-2">0</p>
+            </div>
+            <div class="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl p-5 text-white shadow-md hover:shadow-lg transition">
+                <p class="text-sm opacity-80 font-medium">品質落差率</p>
+                <p id="discrepancyRate" class="text-3xl font-bold mt-2">0.0%</p>
+            </div>
+            <div class="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-5 text-white shadow-md hover:shadow-lg transition">
+                <p class="text-sm opacity-80 font-medium">已評估病患數</p>
+                <p id="patientCount" class="text-3xl font-bold mt-2">0</p>
+            </div>
+        </div>
+
+        <!-- 篩選與搜尋工具列 -->
+        <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="w-full sm:w-72 relative">
+                <input type="text" id="searchInput" oninput="filterLogs()" placeholder="搜尋病患或護理師姓名..." 
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-medical-500 focus:border-medical-500 transition text-sm">
+            </div>
+            <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+                <span class="text-sm font-medium text-gray-700">僅顯示判定落差</span>
+                <button type="button" id="discrepancyToggle" onclick="toggleDiscrepancyFilter()" 
+                    class="bg-gray-200 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none">
+                    <span id="toggleHandle" aria-hidden="true" class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">紀錄時間</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">病患姓名</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">負責護理師</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">AI 客觀判定</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">護理師主觀判定</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態稽核</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditTableBody" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="6" class="px-6 py-10 text-center text-gray-500">
+                                正在載入稽核紀錄...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- 雙軌對比詳情 Modal -->
+    <div id="detailModal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <!-- Background Overlay -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeDetailModal()"></div>
+            <!-- Center alignment helper -->
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div class="inline-block align-bottom bg-slate-50 rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+                <!-- Header -->
+                <div class="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900" id="modalTitle">病患詳細雙軌照護紀錄</h3>
+                        <p class="text-xs text-gray-500 mt-1" id="modalSubTitle">紀錄時間: -- | 負責護理師: --</p>
+                    </div>
+                    <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600 transition">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                
+                <!-- Content Body -->
+                <div class="p-6 space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Left: Wound Photo -->
+                        <div class="lg:col-span-1 flex flex-col justify-center bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                            <h4 class="text-sm font-bold text-gray-700 mb-3 border-l-4 border-medical-500 pl-2">傷口影像</h4>
+                            <div class="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+                                <img id="modalWoundImg" src="" alt="傷口照片" class="w-full h-full object-cover">
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Dual track comparison -->
+                        <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- AI Advice (Blue) -->
+                            <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                                <div class="flex items-center space-x-2 text-blue-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                                    <h4 class="font-bold text-lg">AI 客觀判定結果</h4>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-50">
+                                        <p class="text-xxs text-gray-400 font-bold uppercase">分級</p>
+                                        <p id="modalAiGrade" class="text-lg font-bold text-blue-700 mt-0.5">--</p>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-50">
+                                        <p class="text-xxs text-gray-400 font-bold uppercase">信心度</p>
+                                        <p id="modalAiConfidence" class="text-lg font-bold text-green-600 mt-0.5">--%</p>
+                                    </div>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg shadow-sm border border-blue-50">
+                                    <p class="text-xxs text-gray-400 font-bold uppercase mb-1">標準照護建議</p>
+                                    <p id="modalAiAdvice" class="text-sm text-gray-700 leading-relaxed"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Nurse Advice (Green) -->
+                            <div id="modalNurseBlock" class="bg-green-50 border border-green-100 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
+                                <div class="flex items-center space-x-2 text-green-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                    <h4 class="font-bold text-lg">護理師臨床判斷</h4>
+                                </div>
+                                <div class="bg-white p-3 rounded-lg shadow-sm border border-green-50">
+                                    <p class="text-xxs text-gray-400 font-bold uppercase">臨床判定分級</p>
+                                    <p id="modalNurseGrade" class="text-lg font-bold text-green-700 mt-0.5">--</p>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg shadow-sm border border-green-50">
+                                    <p class="text-xxs text-gray-400 font-bold uppercase mb-1">實際處置與照護建議</p>
+                                    <p id="modalNurseAdvice" class="text-sm text-gray-700 leading-relaxed"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="bg-white px-6 py-4 border-t border-gray-200 flex justify-end">
+                    <button onclick="closeDetailModal()" class="bg-medical-900 hover:bg-medical-800 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition">
+                        關閉視窗
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 權限驗證與初始化 ---
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+
+        // 如果沒有 Token 或不是管理員，踢回登入頁
+        if (!token || userInfo.role !== 'admin') {
+            alert('權限不足：請以管理員身分登入！');
+            window.location.href = 'login.html';
+        }
+
+        // 顯示管理員姓名
+        document.getElementById('adminNameDisplay').textContent = `${userInfo.full_name} (管理員)`;
+
+        // 全域變數以儲存資料與狀態
+        window.auditLogs = [];
+        window.showDiscrepanciesOnly = false;
+
+        // --- 2. 撈取稽核資料並渲染表格 ---
+        async function fetchAuditLogs() {
+            try {
+                const response = await fetch('/api/admin/audit-logs', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}` 
+                    }
+                });
+
+                if (response.status === 401 || response.status === 403) {
+                    alert('登入已過期或權限不足，請重新登入');
+                    logout();
+                    return;
+                }
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    window.auditLogs = result.data;
+                    updateDashboardStats(result.data);
+                    filterLogs();
+                } else {
+                    console.error('API Error:', result.message);
+                }
+
+            } catch (error) {
+                console.error('Error fetching audit logs:', error);
+                document.getElementById('auditTableBody').innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-red-500">無法取得資料，請確認伺服器狀態</td></tr>`;
+            }
+        }
+
+        // --- 3. 更新統計看板數據 ---
+        function updateDashboardStats(logs) {
+            const total = logs.length;
+            const discrepancies = logs.filter(log => log.has_discrepancy).length;
+            const rate = total > 0 ? ((discrepancies / total) * 100).toFixed(1) : '0.0';
+            
+            // 計算評估病患的不重複數目
+            const uniquePatients = new Set(logs.map(log => log.patient_name)).size;
+
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('discrepancyCount').textContent = discrepancies;
+            document.getElementById('discrepancyRate').textContent = `${rate}%`;
+            document.getElementById('patientCount').textContent = uniquePatients;
+        }
+
+        // --- 4. 篩選資料 ---
+        function filterLogs() {
+            const searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            const filtered = window.auditLogs.filter(log => {
+                // 1. 判定落差篩選
+                if (window.showDiscrepanciesOnly && !log.has_discrepancy) {
+                    return false;
+                }
+                
+                // 2. 關鍵字搜尋 (病患姓名、護理師姓名)
+                if (searchQuery) {
+                    const patientMatch = log.patient_name ? log.patient_name.toLowerCase().includes(searchQuery) : false;
+                    const nurseMatch = log.nurse_name ? log.nurse_name.toLowerCase().includes(searchQuery) : false;
+                    return patientMatch || nurseMatch;
+                }
+                
+                return true;
+            });
+            
+            renderTable(filtered);
+        }
+
+        // --- 5. 渲染表格 ---
+        function renderTable(logs) {
+            const tbody = document.getElementById('auditTableBody');
+            tbody.innerHTML = '';
+
+            if (logs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-gray-500">查無相符的傷口紀錄</td></tr>`;
+                return;
+            }
+
+            logs.forEach(log => {
+                const rowClass = log.has_discrepancy 
+                    ? 'bg-red-50 hover:bg-red-100 transition-colors cursor-pointer' 
+                    : 'hover:bg-gray-50 transition-colors cursor-pointer';
+                    
+                const statusBadge = log.has_discrepancy 
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200">
+                         <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+                         判定落差
+                       </span>`
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">一致</span>`;
+
+                const confPercentage = log.ai_confidence ? (log.ai_confidence * 100).toFixed(1) + '%' : '0.0%';
+
+                const tr = `
+                    <tr class="${rowClass}" onclick="openDetailModal(${log.id})">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${log.created_at}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${log.patient_name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${log.nurse_name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-700 font-medium">
+                            ${log.ai_grade} <span class="text-xs text-gray-400 ml-1">(${confPercentage})</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm ${log.has_discrepancy ? 'text-red-600 font-bold' : 'text-green-700 font-medium'}">${log.nurse_grade}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">${statusBadge}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += tr;
+            });
+        }
+
+        // --- 6. 控制落差篩選 Switch 開關 ---
+        function toggleDiscrepancyFilter() {
+            window.showDiscrepanciesOnly = !window.showDiscrepanciesOnly;
+            
+            const toggleBtn = document.getElementById('discrepancyToggle');
+            const toggleHandle = document.getElementById('toggleHandle');
+            
+            if (window.showDiscrepanciesOnly) {
+                toggleBtn.classList.remove('bg-gray-200');
+                toggleBtn.classList.add('bg-red-500');
+                toggleHandle.classList.remove('translate-x-0');
+                toggleHandle.classList.add('translate-x-5');
+            } else {
+                toggleBtn.classList.remove('bg-red-500');
+                toggleBtn.classList.add('bg-gray-200');
+                toggleHandle.classList.remove('translate-x-5');
+                toggleHandle.classList.add('translate-x-0');
+            }
+            
+            filterLogs();
+        }
+
+        // --- 7. Modal 控制 ---
+        function openDetailModal(id) {
+            const record = window.auditLogs.find(log => log.id === id);
+            if (!record) return;
+
+            document.getElementById('modalTitle').textContent = `病患【${record.patient_name}】詳細雙軌照護紀錄`;
+            document.getElementById('modalSubTitle').textContent = `紀錄時間: ${record.created_at} | 負責護理師: ${record.nurse_name}`;
+            
+            // 設定圖片
+            const woundImg = document.getElementById('modalWoundImg');
+            woundImg.src = record.image_url;
+            
+            // 設定 AI 區塊
+            document.getElementById('modalAiGrade').textContent = record.ai_grade;
+            document.getElementById('modalAiConfidence').textContent = record.ai_confidence ? (record.ai_confidence * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('modalAiAdvice').textContent = record.ai_advice || '無';
+
+            // 設定護理師區塊
+            document.getElementById('modalNurseGrade').textContent = record.nurse_grade;
+            document.getElementById('modalNurseAdvice').textContent = record.nurse_advice || '無';
+            
+            // 判定落差則將護理師區塊邊框和標題標記為紅色以提示管理員
+            const nurseBlock = document.getElementById('modalNurseBlock');
+            if (record.has_discrepancy) {
+                nurseBlock.className = "bg-rose-50 border border-rose-200 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden";
+                nurseBlock.querySelector('.absolute').className = "absolute top-0 left-0 w-1.5 h-full bg-rose-500";
+                nurseBlock.querySelector('.flex').className = "flex items-center space-x-2 text-rose-700";
+                document.getElementById('modalNurseGrade').className = "text-lg font-bold text-rose-700 mt-0.5";
+            } else {
+                nurseBlock.className = "bg-green-50 border border-green-100 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden";
+                nurseBlock.querySelector('.absolute').className = "absolute top-0 left-0 w-1.5 h-full bg-green-500";
+                nurseBlock.querySelector('.flex').className = "flex items-center space-x-2 text-green-700";
+                document.getElementById('modalNurseGrade').className = "text-lg font-bold text-green-700 mt-0.5";
+            }
+
+            // 顯示 Modal
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = 'login.html';
+        }
+
+        // 載入後立即執行
+        fetchAuditLogs();
+    </script>
+</body>
+</html>

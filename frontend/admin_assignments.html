@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>護病分配管理 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-900 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-6">
+                    <span class="text-white text-xl font-bold tracking-wider">系統管理控制台</span>
+                    <div class="hidden md:flex space-x-4">
+                        <a href="admin_dashboard.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">品質稽核總覽</a>
+                        <a href="admin_assignments.html" class="bg-medical-600 text-white px-3 py-2 rounded-md text-sm font-medium">護病分配管理</a>
+                        <a href="admin_users.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">人員帳號管理</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="adminNameDisplay" class="text-gray-400 text-sm border-l border-gray-600 pl-4 hidden sm:block"></span>
+                    <button onclick="logout()" class="text-gray-400 hover:text-white text-sm font-medium transition ml-4">登出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-5xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        <div class="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+            <div class="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-bold text-gray-800">指派護理師照護任務</h2>
+                <p class="text-sm text-gray-500 mt-1">請選擇病患、負責的護理師以及對應的班別進行綁定。</p>
+            </div>
+            
+            <form id="assignmentForm" class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">1. 選擇病患 *</label>
+                    <select id="patientSelect" required onchange="showPatientPreview()" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border bg-gray-50">
+                        <option value="">載入中...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">2. 指派負責護理師 *</label>
+                    <select id="nurseSelect" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border bg-gray-50">
+                        <option value="">載入中...</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">3. 選擇照護班別 *</label>
+                    <select id="shiftSelect" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border bg-gray-50">
+                        <option value="day">白班 (Day Shift)</option>
+                        <option value="evening">小夜班 (Evening Shift)</option>
+                        <option value="night">大夜班 (Night Shift)</option>
+                    </select>
+                </div>
+                
+                <!-- 病患預覽面板 -->
+                <div id="patientPreview" class="hidden md:col-span-3 bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-blue-800">
+                    <div class="font-bold flex items-center mb-1">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        所選病患臨床資訊預覽
+                    </div>
+                    <p id="previewText">床號: -- | 病史: --</p>
+                </div>
+
+                <div class="md:col-span-3 pt-4 border-t border-gray-100 flex justify-end">
+                    <button type="button" onclick="submitAssignment()" class="bg-medical-900 hover:bg-medical-800 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition">
+                        確認指派
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div>
+            <h2 class="text-xl font-bold text-gray-800 mb-4 border-l-4 border-medical-600 pl-3">護理師照護任務分配看板</h2>
+            <div id="nurseBoard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="col-span-full text-center py-10 text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    正在載入照護看板...
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        if (!token || userInfo.role !== 'admin') window.location.href = 'login.html';
+        
+        document.getElementById('adminNameDisplay').textContent = `${userInfo.full_name} (管理員)`;
+
+        const shiftLabels = { 'day': '白班', 'evening': '小夜班', 'night': '大夜班' };
+
+        // 全域變數儲存資料
+        window.nurses = [];
+        window.patients = [];
+        window.assignments = [];
+
+        // 1. 載入下拉選單選項
+        async function fetchOptions() {
+            try {
+                const res = await fetch('/api/admin/assignment-options', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                
+                window.nurses = result.data.nurses;
+                window.patients = result.data.patients;
+                
+                const patientSelect = document.getElementById('patientSelect');
+                const nurseSelect = document.getElementById('nurseSelect');
+                
+                patientSelect.innerHTML = '<option value="">-- 請選擇病患 --</option>';
+                window.patients.forEach(p => patientSelect.innerHTML += `<option value="${p.id}">${p.name} (${p.bed_number})</option>`);
+
+                nurseSelect.innerHTML = '<option value="">-- 請選擇負責護理師 --</option>';
+                window.nurses.forEach(n => nurseSelect.innerHTML += `<option value="${n.id}">${n.name}</option>`);
+                
+                // 下拉選單載入完成後再撈取分配清單
+                fetchAssignmentsList();
+            } catch (error) {
+                console.error("無法載入選項", error);
+            }
+        }
+
+        // 顯示病患臨床資料預覽
+        function showPatientPreview() {
+            const patientId = document.getElementById('patientSelect').value;
+            const previewDiv = document.getElementById('patientPreview');
+            const previewText = document.getElementById('previewText');
+            
+            if (!patientId) {
+                previewDiv.classList.add('hidden');
+                return;
+            }
+            
+            const p = window.patients.find(x => x.id == patientId);
+            if (p) {
+                previewText.textContent = `床號: ${p.bed_number} | 臨床病史/備註: ${p.medical_history}`;
+                previewDiv.classList.remove('hidden');
+            } else {
+                previewDiv.classList.add('hidden');
+            }
+        }
+
+        // 2. 載入目前的分配清單並渲染成看板
+        async function fetchAssignmentsList() {
+            try {
+                const res = await fetch('/api/admin/assignments', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    window.assignments = result.data;
+                    renderNurseBoard();
+                }
+            } catch (error) {
+                console.error("無法載入分配清單", error);
+            }
+        }
+
+        // 渲染護理師照護看板
+        function renderNurseBoard() {
+            const board = document.getElementById('nurseBoard');
+            board.innerHTML = '';
+
+            if (window.nurses.length === 0) {
+                board.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500 bg-white rounded-xl border border-gray-200 shadow-sm">目前尚無任何護理師資料，請先至「人員帳號管理」新增護理師。</div>`;
+                return;
+            }
+
+            window.nurses.forEach(nurse => {
+                // 篩選該護理師的所有指派任務
+                const nurseAss = window.assignments.filter(a => a.nurse_id === nurse.id);
+                
+                // 按班別分組
+                const dayShifts = nurseAss.filter(a => a.shift_type === 'day');
+                const eveningShifts = nurseAss.filter(a => a.shift_type === 'evening');
+                const nightShifts = nurseAss.filter(a => a.shift_type === 'night');
+
+                const cardHtml = `
+                    <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition overflow-hidden">
+                        <!-- 卡片標頭 -->
+                        <div class="bg-medical-900 px-5 py-3.5 flex justify-between items-center text-white">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-5 h-5 text-sky-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
+                                <span class="font-bold text-lg">${nurse.name}</span>
+                            </div>
+                            <span class="text-xs bg-medical-600 px-2 py-0.5 rounded-full">護理師</span>
+                        </div>
+                        
+                        <!-- 班別分配內容 -->
+                        <div class="p-5 space-y-4">
+                            <!-- 白班 -->
+                            <div class="space-y-1.5 pb-3 border-b border-gray-100">
+                                <span class="text-xs font-bold text-yellow-600 bg-yellow-50 px-2.5 py-1 rounded-full">☀️ 白班 (Day)</span>
+                                <div class="flex flex-wrap mt-2.5">
+                                    ${renderShiftPatients(dayShifts, 'day')}
+                                </div>
+                            </div>
+                            
+                            <!-- 小夜班 -->
+                            <div class="space-y-1.5 pb-3 border-b border-gray-100">
+                                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full">🌆 小夜班 (Evening)</span>
+                                <div class="flex flex-wrap mt-2.5">
+                                    ${renderShiftPatients(eveningShifts, 'evening')}
+                                </div>
+                            </div>
+                            
+                            <!-- 大夜班 -->
+                            <div class="space-y-1.5">
+                                <span class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full">🌙 大夜班 (Night)</span>
+                                <div class="flex flex-wrap mt-2.5">
+                                    ${renderShiftPatients(nightShifts, 'night')}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                board.innerHTML += cardHtml;
+            });
+        }
+
+        // 渲染班別內的病患標籤
+        function renderShiftPatients(assignments, shift) {
+            if (assignments.length === 0) {
+                return `<span class="text-xs text-gray-400 italic py-1">無指派任務</span>`;
+            }
+            return assignments.map(a => `
+                <span class="inline-flex items-center pl-2.5 pr-1 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 mr-2 mb-2">
+                    ${a.patient_name}
+                    <button onclick="deleteAssignment(${a.patient_id}, '${shift}')" class="ml-1.5 h-4 w-4 rounded-full inline-flex items-center justify-center text-slate-400 hover:bg-slate-200 hover:text-slate-600 font-bold text-sm transition" title="解除分配">
+                        &times;
+                    </button>
+                </span>
+            `).join('');
+        }
+
+        // 3. 送出分配表單
+        async function submitAssignment() {
+            const patientId = document.getElementById('patientSelect').value;
+            const nurseId = document.getElementById('nurseSelect').value;
+            const shiftType = document.getElementById('shiftSelect').value;
+
+            if (!patientId || !nurseId || !shiftType) {
+                alert("請完整選擇病患、護理師與班別！"); return;
+            }
+
+            // 衝突檢查：檢查此病患在此班別是否已指派給其他護理師
+            const existingAss = window.assignments.find(a => a.patient_id == patientId && a.shift_type === shiftType);
+            if (existingAss) {
+                const targetPatient = window.patients.find(x => x.id == patientId);
+                const pName = targetPatient ? targetPatient.name : `ID:${patientId}`;
+                const warningMsg = `⚠️ 衝突警報！\n\n病患「${pName}」在此班別已指派給負責護理師「${existingAss.nurse_name}」。\n\n您確定要將該病患改分配給新的護理師嗎？(舊的分配將會被覆蓋)`;
+                if (!confirm(warningMsg)) {
+                    return;
+                }
+            }
+
+            try {
+                const res = await fetch('/api/admin/assignments', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ patient_id: parseInt(patientId), nurse_id: parseInt(nurseId), shift_type: shiftType })
+                });
+
+                if (res.ok) {
+                    alert("✅ 護病分配更新成功！");
+                    document.getElementById('assignmentForm').reset();
+                    showPatientPreview(); // 重置預覽
+                    fetchAssignmentsList(); // 重新拉取數據重繪看板
+                } else {
+                    alert("更新失敗，請確認權限。");
+                }
+            } catch (error) {
+                console.error("API 錯誤", error);
+            }
+        }
+
+        // 4. 刪除分配
+        async function deleteAssignment(patientId, shiftType) {
+            // 尋找病患姓名
+            const p = window.patients.find(x => x.id == patientId);
+            const pName = p ? p.name : `ID:${patientId}`;
+            
+            if (!confirm(`確定要解除病患「${pName}」的 [${shiftLabels[shiftType]}] 照護指派嗎？`)) return;
+
+            try {
+                const res = await fetch(`/api/admin/assignments?patient_id=${patientId}&shift_type=${shiftType}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.ok) {
+                    alert("🗑️ 分配任務已成功解除！");
+                    fetchAssignmentsList(); // 重新拉取資料重繪看板
+                } else {
+                    alert("刪除失敗，請稍後再試。");
+                }
+            } catch (error) {
+                console.error("刪除失敗", error);
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        // 網頁載入時初始化
+        fetchOptions();
+    </script>
+</body>
+</html>

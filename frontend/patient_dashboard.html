@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>病患專區 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#10b981', 600: '#059669', 900: '#064e3b' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-600 shadow-md">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-4">
+                    <span class="text-white text-xl font-bold tracking-wider">我的照護專區</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="patientNameDisplay" class="text-white font-medium"></span>
+                    <button onclick="logout()" class="text-green-100 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition bg-medical-900 bg-opacity-30">
+                        登出
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900" id="welcomeMessage">您好，載入中...</h1>
+                <p class="mt-2 text-sm text-gray-500">這裡是您的專屬照護空間，您可以查看傷口復原紀錄與衛教資訊，或詢問右側的 AI 照護助理。</p>
+            </div>
+            <div class="hidden sm:block">
+                <svg class="h-16 w-16 text-medical-500 opacity-20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+            <!-- Left 2 Columns: Wound Records & Videos -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Wound Records -->
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-l-4 border-medical-500 pl-3">歷次傷口紀錄與照護建議</h2>
+                    <div id="recordsContainer" class="space-y-6">
+                        <p class="text-gray-500">正在載入您的紀錄...</p>
+                    </div>
+                </div>
+
+                <!-- Videos -->
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-l-4 border-blue-500 pl-3">推薦衛教影片</h2>
+                    <div id="videosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <p class="text-gray-500 col-span-full">正在載入衛教資訊...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right 1 Column: AI Chat Box -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden flex flex-col h-[580px] sticky top-6">
+                    <!-- Chat Header -->
+                    <div class="bg-medical-600 px-5 py-4 text-white flex justify-between items-center">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="relative">
+                                <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white animate-pulse"></span>
+                                <svg class="w-6 h-6 text-emerald-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm">AI 傷口照護助理</h3>
+                                <p class="text-xxs text-emerald-100 font-medium">線上即時諮詢中</p>
+                            </div>
+                        </div>
+                        <button onclick="clearChat()" class="text-xs text-emerald-100 hover:text-white transition font-medium">清空對話</button>
+                    </div>
+
+                    <!-- Chat Messages Scroll -->
+                    <div id="chatMessages" class="flex-grow p-4 overflow-y-auto space-y-4 bg-slate-50 text-sm">
+                        <div class="flex items-start space-x-3">
+                            <div class="bg-medical-500 text-white rounded-full p-1.5 text-xs font-bold shadow-sm">AI</div>
+                            <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 max-w-[85%] text-gray-700 leading-relaxed">
+                                您好！我是您的智慧傷口照護助理。有關您的傷口狀況、換藥步驟、敷料使用或飲食建議，您都可以在這裡問我喔！
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Prompts -->
+                    <div class="px-4 py-2 bg-white border-t border-gray-100 flex flex-wrap gap-2">
+                        <button onclick="sendQuickPrompt('如何正確清潔傷口？')" class="text-xxs font-semibold bg-slate-100 hover:bg-medical-50 hover:text-medical-600 text-gray-600 px-2 py-1 rounded-full transition border border-gray-200">如何清潔傷口？</button>
+                        <button onclick="sendQuickPrompt('人工皮需要多久更換一次？')" class="text-xxs font-semibold bg-slate-100 hover:bg-medical-50 hover:text-medical-600 text-gray-600 px-2 py-1 rounded-full transition border border-gray-200">人工皮何時更換？</button>
+                        <button onclick="sendQuickPrompt('傷口周圍紅腫是發炎嗎？')" class="text-xxs font-semibold bg-slate-100 hover:bg-medical-50 hover:text-medical-600 text-gray-600 px-2 py-1 rounded-full transition border border-gray-200">紅腫是發炎嗎？</button>
+                    </div>
+
+                    <!-- Chat Input Area -->
+                    <form id="chatForm" onsubmit="handleChatSubmit(event)" class="p-3 bg-white border-t border-gray-100 flex items-center space-x-2">
+                        <input type="text" id="chatInput" required placeholder="請輸入照護問題..." 
+                            class="flex-grow px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-medical-500 text-sm transition">
+                        <button type="submit" id="chatSendBtn" class="bg-medical-600 hover:bg-medical-700 text-white rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+                            傳送
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        if (!token || userInfo.role !== 'patient') window.location.href = 'login.html';
+        
+        document.getElementById('patientNameDisplay').textContent = userInfo.full_name;
+        document.getElementById('welcomeMessage').textContent = `${userInfo.full_name}，祝您早日康復！`;
+
+        // 1. 撈取病患自己的傷口紀錄
+        async function fetchMyRecords() {
+            try {
+                const res = await fetch('/api/patient/my-records', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                const container = document.getElementById('recordsContainer');
+                container.innerHTML = '';
+
+                if (result.data.length === 0) {
+                    container.innerHTML = `<div class="bg-gray-50 p-8 rounded-xl text-center text-gray-500">您目前尚無傷口紀錄。</div>`;
+                    return;
+                }
+
+                result.data.forEach(record => {
+                    container.innerHTML += `
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col md:flex-row gap-6 hover:shadow-md transition">
+                            <div class="md:w-1/4 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200 h-32 md:h-auto bg-gray-50">
+                                <img src="${record.image_url}" class="w-full h-full object-cover" alt="傷口照片">
+                            </div>
+                            <div class="md:w-3/4 space-y-3">
+                                <div class="flex justify-between items-start border-b pb-2">
+                                    <div><p class="text-xs text-gray-500">評估時間</p><p class="font-bold text-gray-900">${record.created_at}</p></div>
+                                    <div class="text-right"><p class="text-xs text-gray-500">負責護理師</p><p class="font-medium text-medical-600">${record.nurse_name}</p></div>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-500 font-bold mb-1">👨‍⚕️ 護理師給您的照護建議</p>
+                                    <p class="text-gray-700 bg-green-50 p-3 rounded-lg text-sm">${record.nurse_advice}</p>
+                                </div>
+                                <div class="mt-2">
+                                    <p class="text-xs text-gray-400 mb-1">🤖 系統 AI 客觀判定輔助參考</p>
+                                    <p class="text-gray-500 text-xs">${record.ai_grade} - ${record.ai_advice}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error("無法載入紀錄", error);
+                document.getElementById('recordsContainer').innerHTML = `<p class="text-red-500">無法載入紀錄，請確認網路連線。</p>`;
+            }
+        }
+
+        // 2. 撈取衛教影片
+        async function fetchVideos() {
+            try {
+                const res = await fetch('/api/patient/videos', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                const container = document.getElementById('videosContainer');
+                container.innerHTML = '';
+
+                if (result.data.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500 col-span-full">目前暫無衛教影片。</p>`;
+                    return;
+                }
+
+                result.data.forEach(video => {
+                    container.innerHTML += `
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition">
+                            <div class="bg-blue-100 aspect-video flex items-center justify-center text-blue-500">
+                                <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="font-bold text-gray-900">${video.title}</h3>
+                                <p class="text-sm text-gray-500 mt-1 line-clamp-2">${video.description}</p>
+                                <a href="${video.video_url}" target="_blank" class="mt-3 inline-block text-blue-600 hover:text-blue-800 text-sm font-bold">觀看影片 &rarr;</a>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error("無法載入影片", error);
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        // ==========================================
+        // AI Chat Assistant Logic
+        // ==========================================
+        let chatHistory = [];
+
+        function formatReply(text) {
+            if (!text) return '';
+            // 先過濾基本 HTML 特殊字元防止 XSS
+            let escaped = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+            
+            // 轉換 **粗體** 為 <strong> 標籤
+            escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>');
+            
+            // 轉換換行 \n 為 <br>
+            escaped = escaped.replace(/\n/g, '<br>');
+            return escaped;
+        }
+
+        function appendMessage(role, text) {
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+
+            const formattedText = formatReply(text);
+            const isUser = role === 'user';
+
+            let bubbleHTML = '';
+            if (isUser) {
+                bubbleHTML = `
+                    <div class="flex items-start justify-end space-x-3">
+                        <div class="bg-medical-600 text-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[85%] leading-relaxed">
+                            ${formattedText}
+                        </div>
+                        <div class="bg-medical-900 bg-opacity-25 text-medical-900 rounded-full p-1.5 text-xs font-bold shadow-sm flex items-center justify-center w-7 h-7">我</div>
+                    </div>
+                `;
+            } else {
+                bubbleHTML = `
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-medical-500 text-white rounded-full p-1.5 text-xs font-bold shadow-sm flex items-center justify-center w-7 h-7">AI</div>
+                        <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 max-w-[85%] text-gray-700 leading-relaxed">
+                            ${formattedText}
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatMessages.insertAdjacentHTML('beforeend', bubbleHTML);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+
+            const indicatorHTML = `
+                <div id="typingIndicator" class="flex items-start space-x-3">
+                    <div class="bg-medical-500 text-white rounded-full p-1.5 text-xs font-bold shadow-sm flex items-center justify-center w-7 h-7">AI</div>
+                    <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 flex items-center space-x-1">
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+                        <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+                    </div>
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', indicatorHTML);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        async function handleChatSubmit(event) {
+            if (event) event.preventDefault();
+
+            const input = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('chatSendBtn');
+            const textVal = input.value.trim();
+            if (!textVal) return;
+
+            // 1. 清空輸入框
+            input.value = '';
+
+            // 2. 禁用輸入與傳送按鈕
+            input.disabled = true;
+            sendBtn.disabled = true;
+            sendBtn.classList.add('opacity-50');
+
+            // 3. 呈現使用者訊息
+            appendMessage('user', textVal);
+            chatHistory.push({ role: 'user', content: textVal });
+
+            // 4. 呈現打字效果
+            showTypingIndicator();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ messages: chatHistory })
+                });
+
+                const result = await response.json();
+                removeTypingIndicator();
+
+                if (response.ok) {
+                    const aiReply = result.reply;
+                    appendMessage('assistant', aiReply);
+                    chatHistory.push({ role: 'assistant', content: aiReply });
+                } else {
+                    appendMessage('assistant', `抱歉，系統暫時出現問題（${result.detail || '未知的錯誤'}），請稍後再試。`);
+                }
+            } catch (error) {
+                console.error("對話連線失敗:", error);
+                removeTypingIndicator();
+                appendMessage('assistant', "連線失敗，請檢查網路連線。若本地端模型未啟動，請確認後端是否已設定降級模式。");
+            } finally {
+                // 5. 恢復輸入與傳送按鈕
+                input.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-50');
+                input.focus();
+            }
+        }
+
+        function sendQuickPrompt(promptText) {
+            const input = document.getElementById('chatInput');
+            if (input) {
+                input.value = promptText;
+                handleChatSubmit();
+            }
+        }
+
+        function clearChat() {
+            chatHistory = [];
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="flex items-start space-x-3">
+                        <div class="bg-medical-500 text-white rounded-full p-1.5 text-xs font-bold shadow-sm flex items-center justify-center w-7 h-7">AI</div>
+                        <div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 max-w-[85%] text-gray-700 leading-relaxed">
+                            您好！我是您的智慧傷口照護助理。有關您的傷口狀況、換藥步驟、敷料使用或飲食建議，您都可以在這裡問我喔！
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        fetchMyRecords();
+        fetchVideos();
+    </script>
+</body>
+</html>

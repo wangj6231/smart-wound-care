@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>傷口評估紀錄 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#0ea5e9', 600: '#0284c7' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-600 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-4">
+                    <button onclick="window.history.back()" class="text-white hover:bg-medical-700 px-3 py-2 rounded-md transition font-medium">
+                        &larr; 返回清單
+                    </button>
+                    <span class="text-white text-lg font-bold tracking-wider border-l border-blue-400 pl-4">傷口評估與雙軌紀錄</span>
+                </div>
+                <span id="nurseInfoDisplay" class="text-white text-sm font-medium"></span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6 flex justify-between items-center">
+            <div>
+                <h2 class="text-sm text-gray-500 font-medium">目前評估病患</h2>
+                <div id="patientInfoDisplay" class="text-2xl font-bold text-gray-900 mt-1">載入中...</div>
+            </div>
+            <div class="text-right flex items-center space-x-4">
+                <button type="button" onclick="openHistoryModal()" class="flex items-center text-medical-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm border border-blue-100">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    查看歷史紀錄
+                </button>
+                <div class="border-l border-gray-200 pl-4">
+                    <p class="text-sm text-gray-500">系統紀錄時間</p>
+                    <p id="currentDateDisplay" class="text-lg font-semibold text-gray-700"></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <div class="space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">1. 拍攝或上傳傷口影像</h3>
+                    
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition cursor-pointer" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <p class="mt-2 text-sm text-gray-600">點擊上傳或拖曳圖片至此</p>
+                        <p class="text-xs text-gray-500 mt-1">支援 JPG, PNG 格式</p>
+                        <input type="file" id="fileInput" class="hidden" accept="image/*" onchange="previewImage(event)">
+                    </div>
+                    
+                    <div id="imagePreviewContainer" class="hidden mt-4">
+                        <img id="imagePreview" src="#" alt="傷口預覽" class="w-full h-auto rounded-lg shadow-sm border border-gray-200">
+                        <button onclick="analyzeImage()" class="mt-4 w-full bg-medical-500 text-white py-2 rounded-lg font-medium hover:bg-medical-600 transition shadow-sm">
+                            啟動 YOLOv8 AI 辨識
+                        </button>
+                    </div>
+                </div>
+
+                <div id="aiResultBlock" class="hidden bg-blue-50 rounded-xl shadow-sm border border-blue-100 p-6 relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+                    <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                        <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                        AI 客觀判定結果
+                    </h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-white p-3 rounded shadow-sm">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">傷口分級</p>
+                            <p id="aiGrade" class="text-xl font-bold text-blue-700 mt-1">Grade X</p>
+                        </div>
+                        <div class="bg-white p-3 rounded shadow-sm">
+                            <p class="text-xs text-gray-500 uppercase font-semibold">信心指數 (Confidence)</p>
+                            <p id="aiConfidence" class="text-xl font-bold text-green-600 mt-1">--%</p>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded shadow-sm">
+                        <p class="text-xs text-gray-500 uppercase font-semibold mb-1">標準照護建議</p>
+                        <p id="aiAdvice" class="text-sm text-gray-700 leading-relaxed"></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-fit">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">2. 護理師臨床判斷紀錄</h3>
+                
+                <form id="recordForm" class="space-y-5">
+                    <input type="hidden" id="patientIdInput">
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">臨床傷口分級判定 *</label>
+                        <select id="nurseGrade" required class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-2.5 border">
+                            <option value="">請選擇分級...</option>
+                            <option value="Grade 1">Grade 1 (表皮發紅未破損)</option>
+                            <option value="Grade 2">Grade 2 (表皮或真皮層部分破損)</option>
+                            <option value="Grade 3">Grade 3 (深及皮下組織)</option>
+                            <option value="Grade 4">Grade 4 (深及肌肉、肌腱或骨頭)</option>
+                            <option value="Unstageable">無法分級 (被壞死組織覆蓋)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">實際處置與照護建議 *</label>
+                        <textarea id="nurseAdvice" required rows="5" placeholder="請詳細描述傷口現況（如：有無化膿、滲液顏色）、使用的敷料類型以及給予病患的衛教指示..." class="w-full border-gray-300 rounded-lg shadow-sm focus:border-medical-500 focus:ring-medical-500 p-3 border"></textarea>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100">
+                        <button type="button" onclick="submitRecord()" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition">
+                            儲存雙軌紀錄並完成交班
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </main>
+    <div id="historyModal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeHistoryModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div class="inline-block align-bottom bg-slate-50 rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-xl leading-6 font-bold text-gray-900" id="modal-title">病患歷史傷口紀錄</h3>
+                    <button onclick="closeHistoryModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                <div class="px-4 py-5 sm:p-6 max-h-[65vh] overflow-y-auto space-y-4" id="historyContent">
+                    <p class="text-center text-gray-500 py-4">載入中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // --- 1. 頁面初始化與權限檢查 ---
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+
+        if (!token || userInfo.role !== 'nurse') {
+            alert('請先登入！');
+            window.location.href = 'login.html';
+        }
+
+        // 顯示護理師與今日日期
+        document.getElementById('nurseInfoDisplay').textContent = `${userInfo.full_name} 護理師`;
+        document.getElementById('currentDateDisplay').textContent = new Date().toLocaleDateString('zh-TW');
+
+        // 解析網址上的 patient_id 參數
+        const urlParams = new URLSearchParams(window.location.search);
+        const patientId = urlParams.get('patient_id');
+        
+        if(patientId) {
+            document.getElementById('patientIdInput').value = patientId;
+            document.getElementById('patientInfoDisplay').textContent = `病患 ID: ${patientId}`;
+            // 實務上這裡會再打一支 API 去撈取該名病患的姓名，但目前為了快速測試，我們直接顯示 ID
+        } else {
+            alert("未取得病患資訊，請返回首頁重新選擇");
+            window.location.href = 'nurse_dashboard.html';
+        }
+
+
+        // --- 2. 影像預覽處理 ---
+        function previewImage(event) {
+            const input = event.target;
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('imagePreview').src = e.target.result;
+                    document.getElementById('imagePreviewContainer').classList.remove('hidden');
+                    document.getElementById('dropZone').classList.add('hidden'); // 隱藏虛線框
+                    
+                    // 重置 AI 區塊 (如果之前有測過的話)
+                    document.getElementById('aiResultBlock').classList.add('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        // --- 3. 模擬呼叫 AI 模型 API ---
+        function analyzeImage() {
+            // 在實務中，這裡會將 input.files[0] 打包成 FormData 送給後端 FastAPI
+            // 目前先用 setTimeout 模擬網路延遲與 YOLOv8 的辨識過程
+            
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = "AI 分析中，請稍候...";
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+
+            setTimeout(() => {
+                // 模擬後端回傳的 YOLOv8 辨識結果
+                const mockAiResult = {
+                    grade: "Grade 2",
+                    confidence: 94.5,
+                    advice: "AI 偵測為二級傷口。建議使用生理食鹽水清潔，並使用親水性敷料保持濕潤，防止感染。"
+                };
+
+                // 將結果渲染到畫面上
+                document.getElementById('aiGrade').textContent = mockAiResult.grade;
+                document.getElementById('aiConfidence').textContent = mockAiResult.confidence + "%";
+                document.getElementById('aiAdvice').textContent = mockAiResult.advice;
+                
+                document.getElementById('aiResultBlock').classList.remove('hidden');
+                
+                // 恢復按鈕狀態
+                btn.textContent = originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+            }, 1500); // 模擬 1.5 秒的分析時間
+        }
+
+        // --- 4. 提交雙軌紀錄 ---
+        async function submitRecord() {
+            const patientId = document.getElementById('patientIdInput').value;
+            const nurseGrade = document.getElementById('nurseGrade').value;
+            const nurseAdvice = document.getElementById('nurseAdvice').value;
+            
+            // 從畫面上取得 AI 的結果 (如果還沒辨識，預設為空)
+            const aiGradeText = document.getElementById('aiGrade').textContent;
+            const aiConfidenceText = document.getElementById('aiConfidence').textContent;
+            const aiAdvice = document.getElementById('aiAdvice').textContent;
+            
+            const hasAiResult = !document.getElementById('aiResultBlock').classList.contains('hidden');
+            const fileInput = document.getElementById('fileInput');
+
+            // 基礎驗證
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("請先上傳傷口圖片！");
+                return;
+            }
+            if (!nurseGrade || !nurseAdvice) {
+                alert("請完整填寫護理師臨床判斷的分級與處置建議！");
+                return;
+            }
+            if (!hasAiResult) {
+                if(!confirm("您尚未執行 AI 影像辨識。確定要略過 AI 輔助，直接儲存紀錄嗎？")) {
+                    return;
+                }
+            }
+
+            // 使用 FormData 來打包資料 (包含文字與檔案)
+            const formData = new FormData();
+            formData.append('patient_id', patientId);
+            formData.append('image', fileInput.files[0]); // 加入圖片檔案
+            formData.append('nurse_grade', nurseGrade);
+            formData.append('nurse_advice', nurseAdvice);
+            
+            // 處理 AI 資料 (如果有啟動辨識就帶入，否則帶入預設值)
+            formData.append('ai_grade', hasAiResult ? aiGradeText : 'None');
+            // 將 "94.5%" 轉換回 0.945 的浮點數格式
+            const confValue = hasAiResult ? parseFloat(aiConfidenceText.replace('%', '')) / 100 : 0;
+            formData.append('ai_confidence', confValue);
+            formData.append('ai_advice', hasAiResult ? aiAdvice : '未啟用 AI 輔助');
+
+            // 更改按鈕狀態，避免重複點擊
+            const submitBtn = event.target;
+            const originalBtnText = submitBtn.textContent;
+            submitBtn.textContent = "儲存中，請稍候...";
+            submitBtn.disabled = true;
+
+            try {
+                // 發送 POST 請求至後端 API
+                const response = await fetch('/api/records', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}` // 記得帶上身分憑證
+                    },
+                    body: formData // 直接發送 FormData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert("🎉 雙軌紀錄成功儲存！交班資訊已更新。");
+                    window.location.href = 'nurse_dashboard.html'; // 儲存完畢後退回清單頁
+                } else {
+                    alert(`儲存失敗：${result.detail}`);
+                }
+            } catch (error) {
+                console.error('Error saving record:', error);
+                alert('無法連線至伺服器，儲存失敗。');
+            } finally {
+                // 恢復按鈕狀態
+                submitBtn.textContent = originalBtnText;
+                submitBtn.disabled = false;
+            }
+        }
+        // --- 5. 歷史紀錄相關邏輯 ---
+        async function openHistoryModal() {
+            const modal = document.getElementById('historyModal');
+            const content = document.getElementById('historyContent');
+            modal.classList.remove('hidden'); // 顯示視窗
+            content.innerHTML = '<p class="text-center text-gray-500 py-8">載入歷史紀錄中...</p>';
+
+            try {
+                // 呼叫後端 API 取得該病患的歷史資料
+                const response = await fetch(`/api/patients/${patientId}/records`, {
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const result = await response.json();
+                
+                if (result.data.length === 0) {
+                    content.innerHTML = '<p class="text-center text-gray-500 py-8">該病患目前尚無歷史傷口紀錄。</p>';
+                    return;
+                }
+
+                // 渲染歷史紀錄卡片
+                let htmlString = '';
+                result.data.forEach(record => {
+                    htmlString += `
+                        <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-5 flex flex-col md:flex-row gap-6">
+                            <div class="md:w-1/3 rounded overflow-hidden flex items-center justify-center border border-gray-200 h-48 bg-gray-50">
+                                <img src="${record.image_url}" class="w-full h-full object-cover" alt="傷口照片">
+                            </div>
+                            <div class="md:w-2/3 space-y-4">
+                                <div class="flex justify-between items-start border-b pb-2">
+                                    <div>
+                                        <p class="text-sm text-gray-500">紀錄時間</p>
+                                        <p class="font-bold text-gray-900">${record.created_at}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="text-sm text-gray-500">負責護理師</p>
+                                        <p class="font-medium text-medical-600">${record.nurse_name}</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="bg-blue-50 p-3 rounded">
+                                        <p class="text-xs text-gray-500 font-bold mb-1">AI 判定 (${record.ai_confidence * 100}%)</p>
+                                        <p class="font-bold text-blue-700">${record.ai_grade}</p>
+                                        <p class="text-xs text-gray-600 mt-1 line-clamp-2">${record.ai_advice}</p>
+                                    </div>
+                                    <div class="bg-green-50 p-3 rounded">
+                                        <p class="text-xs text-gray-500 font-bold mb-1">護理師臨床判定</p>
+                                        <p class="font-bold text-green-700">${record.nurse_grade}</p>
+                                        <p class="text-xs text-gray-600 mt-1 line-clamp-2" title="${record.nurse_advice}">${record.nurse_advice}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                content.innerHTML = htmlString;
+
+            } catch (error) {
+                console.error('Error fetching history:', error);
+                content.innerHTML = '<p class="text-center text-red-500 py-8">無法載入紀錄，請確認網路或伺服器連線。</p>';
+            }
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('historyModal').classList.add('hidden'); // 隱藏視窗
+        }   
+        
+    </script>
+</body>
+</html>
