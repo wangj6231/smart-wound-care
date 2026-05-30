@@ -50,11 +50,30 @@
                     </div>
                 </div>
 
-                <!-- Videos -->
-                <div>
-                    <h2 class="text-xl font-bold text-gray-800 mb-4 border-l-4 border-blue-500 pl-3">推薦衛教影片</h2>
-                    <div id="videosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <p class="text-gray-500 col-span-full">正在載入衛教資訊...</p>
+                <!-- 衛教學習專區 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-6">
+                    <h2 class="text-xl font-bold text-gray-800 border-l-4 border-medical-500 pl-3">📖 衛教學習專區</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Left Column: Articles -->
+                        <div class="space-y-4">
+                            <h3 class="text-md font-bold text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-100">
+                                <span>📄</span> 衛教文章
+                            </h3>
+                            <div id="articlesContainer" class="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                                <p class="text-gray-500">正在載入衛教文章...</p>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Videos -->
+                        <div class="space-y-4">
+                            <h3 class="text-md font-bold text-gray-700 flex items-center gap-2 pb-2 border-b border-gray-100">
+                                <span>🎥</span> 衛教影片
+                            </h3>
+                            <div id="videosContainer" class="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                                <p class="text-gray-500">正在載入衛教影片...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -159,6 +178,13 @@
         }
 
         // 2. 撈取衛教影片
+        function getYoutubeId(url) {
+            if (!url) return null;
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
         async function fetchVideos() {
             try {
                 const res = await fetch('/api/patient/videos', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -166,21 +192,45 @@
                 const container = document.getElementById('videosContainer');
                 container.innerHTML = '';
 
-                if (result.data.length === 0) {
+                if (!result.data || result.data.length === 0) {
                     container.innerHTML = `<p class="text-gray-500 col-span-full">目前暫無衛教影片。</p>`;
                     return;
                 }
 
                 result.data.forEach(video => {
+                    const youtubeId = getYoutubeId(video.video_url);
+                    let thumbnailHtml = `
+                        <div class="bg-blue-50 aspect-video flex items-center justify-center text-blue-500 w-full h-full">
+                            <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                        </div>
+                    `;
+                    if (youtubeId) {
+                        thumbnailHtml = `
+                            <img src="https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="${video.title}">
+                        `;
+                    }
+
                     container.innerHTML += `
-                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition">
-                            <div class="bg-blue-100 aspect-video flex items-center justify-center text-blue-500">
-                                <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-blue-200 group transition flex flex-col sm:flex-row h-auto sm:h-32">
+                            <div class="relative w-full sm:w-2/5 aspect-video sm:aspect-auto sm:h-full overflow-hidden">
+                                ${thumbnailHtml}
+                                <div class="absolute inset-0 bg-slate-950/20 group-hover:bg-slate-950/40 transition-colors flex items-center justify-center">
+                                    <div class="bg-white/95 text-blue-600 rounded-full p-2 shadow-md transform group-hover:scale-110 transition duration-300">
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="p-4">
-                                <h3 class="font-bold text-gray-900">${video.title}</h3>
-                                <p class="text-sm text-gray-500 mt-1 line-clamp-2">${video.description}</p>
-                                <a href="${video.video_url}" target="_blank" class="mt-3 inline-block text-blue-600 hover:text-blue-800 text-sm font-bold">觀看影片 &rarr;</a>
+                            <div class="p-3 w-full sm:w-3/5 flex flex-col justify-between">
+                                <div>
+                                    <h4 class="font-bold text-gray-900 group-hover:text-blue-600 transition line-clamp-1 text-sm">${video.title}</h4>
+                                    <p class="text-xs text-gray-500 mt-1 line-clamp-2 text-xxs">${video.description}</p>
+                                </div>
+                                <div class="mt-2 text-right">
+                                    <a href="${video.video_url}" target="_blank" class="inline-flex items-center text-xs text-blue-600 hover:text-blue-700 font-semibold gap-1">
+                                        觀看影片 
+                                        <svg class="w-3 h-3 transform group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -188,6 +238,117 @@
             } catch (error) {
                 console.error("無法載入影片", error);
             }
+        }
+
+        // 3. 撈取衛教文章與模態視窗邏輯
+        let activeArticles = [];
+
+        async function fetchArticles() {
+            try {
+                const res = await fetch('/api/patient/articles', { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                const container = document.getElementById('articlesContainer');
+                container.innerHTML = '';
+
+                if (!result.data || result.data.length === 0) {
+                    container.innerHTML = `<p class="text-gray-500">目前暫無衛教文章。</p>`;
+                    return;
+                }
+
+                activeArticles = result.data;
+
+                result.data.forEach(article => {
+                    container.innerHTML += `
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition cursor-pointer flex flex-col justify-between h-auto hover:border-medical-200 group" onclick="openArticleModal(${article.id})">
+                            <div class="space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="px-2.5 py-0.5 text-xs font-semibold bg-medical-50 text-medical-600 rounded-full">${article.category}</span>
+                                </div>
+                                <h4 class="font-bold text-gray-900 group-hover:text-medical-600 transition line-clamp-1 text-sm">${article.title}</h4>
+                                <p class="text-xs text-gray-500 line-clamp-2">${article.summary}</p>
+                            </div>
+                            <div class="mt-3 pt-2.5 border-t border-gray-50 flex justify-end">
+                                <span class="text-xs text-medical-600 group-hover:text-medical-700 font-semibold flex items-center gap-1">
+                                    閱讀全文 
+                                    <svg class="w-3.5 h-3.5 transform group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (error) {
+                console.error("無法載入文章", error);
+                document.getElementById('articlesContainer').innerHTML = `<p class="text-red-500">無法載入文章，請稍後再試。</p>`;
+            }
+        }
+
+        function parseMarkdown(text) {
+            if (!text) return '';
+            let html = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-950">$1</strong>');
+            html = html.replace(/### (.*?)\n/g, '<h4 class="text-sm font-bold text-gray-950 mt-4 mb-1 flex items-center gap-1.5"><span class="w-1.5 h-3.5 bg-medical-500 rounded-full"></span>$1</h4>');
+            html = html.replace(/## (.*?)\n/g, '<h3 class="text-md font-bold text-gray-950 mt-5 mb-2 border-b pb-1">$1</h3>');
+
+            const lines = html.split('\n');
+            let inList = false;
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].trim().startsWith('* ')) {
+                    const content = lines[i].trim().substring(2);
+                    if (!inList) {
+                        lines[i] = '<ul class="list-disc pl-5 my-2 space-y-1 text-gray-700"><li>' + content + '</li>';
+                        inList = true;
+                    } else {
+                        lines[i] = '<li>' + content + '</li>';
+                    }
+                } else {
+                    if (inList) {
+                        lines[i-1] += '</ul>';
+                        inList = false;
+                    }
+                }
+            }
+            if (inList) {
+                lines[lines.length - 1] += '</ul>';
+            }
+            
+            html = lines.join('\n');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        function openArticleModal(id) {
+            const article = activeArticles.find(a => a.id === id);
+            if (!article) return;
+
+            document.getElementById('modalArticleCategory').textContent = article.category;
+            document.getElementById('modalArticleTitle').textContent = article.title;
+            document.getElementById('modalArticleBody').innerHTML = parseMarkdown(article.content);
+
+            const modal = document.getElementById('articleModal');
+            const content = document.getElementById('articleModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modal.classList.add('opacity-100');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeArticleModal() {
+            const modal = document.getElementById('articleModal');
+            const content = document.getElementById('articleModalContent');
+            modal.classList.remove('opacity-100');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
         }
 
         function logout() {
@@ -356,6 +517,32 @@
 
         fetchMyRecords();
         fetchVideos();
+        fetchArticles();
     </script>
+
+    <!-- Article Detail Modal -->
+    <div id="articleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-300" onclick="closeArticleModal()">
+        <div class="bg-white rounded-2xl max-w-2xl w-full mx-4 shadow-xl border border-gray-100 flex flex-col max-h-[80vh] transform scale-95 transition-transform duration-300" id="articleModalContent" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-medical-50/50">
+                <div>
+                    <span id="modalArticleCategory" class="px-2.5 py-0.5 text-xs font-semibold bg-medical-100 text-medical-700 rounded-full"></span>
+                    <h3 id="modalArticleTitle" class="text-lg font-bold text-gray-900 mt-2"></h3>
+                </div>
+                <button onclick="closeArticleModal()" class="text-gray-400 hover:text-gray-600 transition p-1.5 bg-white hover:bg-gray-100 border border-gray-100 rounded-full shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto space-y-4 text-gray-700 leading-relaxed text-sm" id="modalArticleBody">
+            </div>
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-gray-100 flex justify-end bg-slate-50 rounded-b-2xl">
+                <button onclick="closeArticleModal()" class="bg-medical-600 hover:bg-medical-700 text-white font-semibold px-6 py-2.5 rounded-xl transition text-sm shadow-sm hover:shadow-md">
+                    確認並關閉
+                </button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
