@@ -362,7 +362,234 @@
         function closeHistoryModal() {
             document.getElementById('historyModal').classList.add('hidden'); // 隱藏視窗
         }   
-        
+    </script>
+
+    <!-- Floating AI Chat Widget -->
+    <div id="nurseChatBtn" class="fixed bottom-6 right-6 z-50 bg-sky-500 hover:bg-sky-600 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all cursor-pointer transform hover:scale-110 flex items-center justify-center w-14 h-14" onclick="toggleNurseChat()">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-sky-300"></span>
+        </span>
+    </div>
+
+    <div id="nurseChatBox" class="fixed bottom-24 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col w-[380px] h-[500px] hidden opacity-0 translate-y-4 transition-all duration-300">
+        <!-- Chat Header -->
+        <div class="bg-sky-600 px-4 py-3 text-white flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="relative">
+                    <span class="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-sky-600 animate-pulse"></span>
+                    <svg class="w-5 h-5 text-sky-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                </div>
+                <div>
+                    <h3 class="font-bold text-xs tracking-wider">AI 臨床護理顧問</h3>
+                    <p class="text-[10px] text-sky-100 font-medium">臨床決策輔助諮詢中</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button onclick="clearNurseChat()" class="text-[10px] text-sky-100 hover:text-white transition font-medium">清空</button>
+                <button onclick="toggleNurseChat()" class="text-sky-100 hover:text-white transition p-0.5 hover:bg-sky-700 rounded">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="nurseChatMessages" class="flex-grow p-4 overflow-y-auto space-y-3 bg-slate-50 text-xs">
+            <div class="flex items-start space-x-2">
+                <div class="bg-sky-500 text-white rounded-full p-1 text-[10px] font-bold shadow-sm flex items-center justify-center w-6 h-6">AI</div>
+                <div class="bg-white p-2.5 rounded-xl rounded-tl-none shadow-sm border border-slate-100 max-w-[85%] text-slate-700 leading-relaxed">
+                    您好！我是您的 AI 臨床護理顧問。若在臨床遇到傷口評估、分級指引、先進敷料選擇或處置等疑問，都可以隨時在這裡向我提問喔！
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Prompts -->
+        <div class="px-3 py-1.5 bg-white border-t border-slate-100 flex flex-wrap gap-1.5">
+            <button onclick="sendNursePrompt('高滲出液傷口該選哪種敷料？')" class="text-[10px] bg-slate-50 hover:bg-sky-50 hover:text-sky-600 text-slate-600 px-2 py-0.5 rounded-full transition border border-slate-200">高滲出液敷料</button>
+            <button onclick="sendNursePrompt('壓瘡三級(Grade 3)的臨床照護要點')" class="text-[10px] bg-slate-50 hover:bg-sky-50 hover:text-sky-600 text-slate-600 px-2 py-0.5 rounded-full transition border border-slate-200">壓瘡三級要點</button>
+            <button onclick="sendNursePrompt('如何評估與預防傷口周圍潮濕浸潤？')" class="text-[10px] bg-slate-50 hover:bg-sky-50 hover:text-sky-600 text-slate-600 px-2 py-0.5 rounded-full transition border border-slate-200">周圍浸潤評估</button>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="nurseChatForm" onsubmit="handleNurseChatSubmit(event)" class="p-2 bg-white border-t border-slate-100 flex items-center space-x-1.5">
+            <input type="text" id="nurseChatInput" required placeholder="輸入臨床問題..." 
+                class="flex-grow px-3 py-1.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-sky-500 text-xs transition">
+            <button type="submit" id="nurseChatSendBtn" class="bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-3.5 py-1.5 text-xs font-bold shadow-sm transition">
+                傳送
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // ==========================================
+        // Floating AI Chat Assistant for Nurse
+        // ==========================================
+        let nurseChatHistory = [];
+
+        function toggleNurseChat() {
+            const chatBox = document.getElementById('nurseChatBox');
+            const isHidden = chatBox.classList.contains('hidden');
+
+            if (isHidden) {
+                chatBox.classList.remove('hidden');
+                setTimeout(() => {
+                    chatBox.classList.remove('opacity-0', 'translate-y-4');
+                    chatBox.classList.add('opacity-100', 'translate-y-0');
+                }, 10);
+            } else {
+                chatBox.classList.remove('opacity-100', 'translate-y-0');
+                chatBox.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => {
+                    chatBox.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        function formatNurseReply(text) {
+            if (!text) return '';
+            let escaped = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            
+            escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-slate-900">$1</strong>');
+            escaped = escaped.replace(/### (.*?)\n/g, '<h4 class="text-xs font-bold text-slate-900 mt-2 mb-1 flex items-center gap-1"><span class="w-1 h-3 bg-sky-500 rounded-full"></span>$1</h4>');
+            escaped = escaped.replace(/## (.*?)\n/g, '<h3 class="text-xs font-bold text-slate-900 mt-3 mb-1 border-b pb-0.5">$1</h3>');
+            escaped = escaped.replace(/\n/g, '<br>');
+            return escaped;
+        }
+
+        function appendNurseMessage(role, text) {
+            const chatMessages = document.getElementById('nurseChatMessages');
+            if (!chatMessages) return;
+
+            const formattedText = formatNurseReply(text);
+            const isUser = role === 'user';
+
+            let bubbleHTML = '';
+            if (isUser) {
+                bubbleHTML = `
+                    <div class="flex items-start justify-end space-x-2">
+                        <div class="bg-sky-600 text-white p-2.5 rounded-xl rounded-tr-none shadow-sm max-w-[85%] leading-relaxed">
+                            ${formattedText}
+                        </div>
+                        <div class="bg-sky-900 bg-opacity-20 text-sky-900 rounded-full p-1 text-[10px] font-bold shadow-sm flex items-center justify-center w-6 h-6">我</div>
+                    </div>
+                `;
+            } else {
+                bubbleHTML = `
+                    <div class="flex items-start space-x-2">
+                        <div class="bg-sky-500 text-white rounded-full p-1 text-[10px] font-bold shadow-sm flex items-center justify-center w-6 h-6">AI</div>
+                        <div class="bg-white p-2.5 rounded-xl rounded-tl-none shadow-sm border border-slate-100 max-w-[85%] text-slate-700 leading-relaxed">
+                            ${formattedText}
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatMessages.insertAdjacentHTML('beforeend', bubbleHTML);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 同步取得父頁面中的 token，如果有的話
+        const nurseToken = localStorage.getItem('access_token') || token;
+
+        function showNurseTypingIndicator() {
+            const chatMessages = document.getElementById('nurseChatMessages');
+            if (!chatMessages) return;
+
+            const indicatorHTML = `
+                <div id="nurseTypingIndicator" class="flex items-start space-x-2">
+                    <div class="bg-sky-500 text-white rounded-full p-1 text-[10px] font-bold shadow-sm flex items-center justify-center w-6 h-6">AI</div>
+                    <div class="bg-white p-2.5 rounded-xl rounded-tl-none shadow-sm border border-slate-100 flex items-center space-x-1">
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+                        <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+                    </div>
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', indicatorHTML);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeNurseTypingIndicator() {
+            const indicator = document.getElementById('nurseTypingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        async function handleNurseChatSubmit(event) {
+            if (event) event.preventDefault();
+
+            const input = document.getElementById('nurseChatInput');
+            const sendBtn = document.getElementById('nurseChatSendBtn');
+            const textVal = input.value.trim();
+            if (!textVal) return;
+
+            input.value = '';
+            input.disabled = true;
+            sendBtn.disabled = true;
+            sendBtn.classList.add('opacity-50');
+
+            appendNurseMessage('user', textVal);
+            nurseChatHistory.push({ role: 'user', content: textVal });
+
+            showNurseTypingIndicator();
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${nurseToken}`
+                    },
+                    body: JSON.stringify({ messages: nurseChatHistory })
+                });
+
+                const result = await response.json();
+                removeNurseTypingIndicator();
+
+                if (response.ok) {
+                    const aiReply = result.reply;
+                    appendNurseMessage('assistant', aiReply);
+                    nurseChatHistory.push({ role: 'assistant', content: aiReply });
+                } else {
+                    appendNurseMessage('assistant', `臨床顧問連線異常：${result.detail || '未知的錯誤'}`);
+                }
+            } catch (error) {
+                console.error("臨床對話連線失敗:", error);
+                removeNurseTypingIndicator();
+                appendNurseMessage('assistant', "連線失敗，請檢查網路。若 AI 離線，請參考系統內建臨床指引。");
+            } finally {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-50');
+                input.focus();
+            }
+        }
+
+        function sendNursePrompt(promptText) {
+            const input = document.getElementById('nurseChatInput');
+            if (input) {
+                input.value = promptText;
+                handleNurseChatSubmit();
+            }
+        }
+
+        function clearNurseChat() {
+            nurseChatHistory = [];
+            const chatMessages = document.getElementById('nurseChatMessages');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="flex items-start space-x-2">
+                        <div class="bg-sky-500 text-white rounded-full p-1 text-[10px] font-bold shadow-sm flex items-center justify-center w-6 h-6">AI</div>
+                        <div class="bg-white p-2.5 rounded-xl rounded-tl-none shadow-sm border border-slate-100 max-w-[85%] text-slate-700 leading-relaxed">
+                            您好！我是您的 AI 臨床護理顧問。若在臨床遇到傷口評估、分級指引、先進敷料選擇或處置等疑問，都可以隨時在這裡向我提問喔！
+                        </div>
+                    </div>
+                `;
+            }
+        }
     </script>
 </body>
 </html>
