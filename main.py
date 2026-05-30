@@ -401,8 +401,8 @@ def update_care_assignment(req: AssignmentReq, current_user: dict = Depends(get_
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="僅限管理員操作")
         
-    # 簡化邏輯：為了避免重複指派，我們先刪除該病患在該班別的舊分配，再寫入新的分配
-    delete_query = text("DELETE FROM care_assignments WHERE patient_id = :p_id AND shift_type = :shift")
+    # 為了保留歷史紀錄，只刪除/覆蓋該病患在該班別「當天」的指派任務
+    delete_query = text("DELETE FROM care_assignments WHERE patient_id = :p_id AND shift_type = :shift AND assigned_date = CURDATE()")
     insert_query = text("INSERT INTO care_assignments (nurse_id, patient_id, shift_type, assigned_date) VALUES (:n_id, :p_id, :shift, CURDATE())")
     
     try:
@@ -418,21 +418,34 @@ def update_care_assignment(req: AssignmentReq, current_user: dict = Depends(get_
     # ... (保留上方原有的所有程式碼)
 
 @app.get("/api/admin/assignments")
-def get_all_assignments(current_user: dict = Depends(get_current_user)):
-    """取得目前所有的護病分配狀況清單"""
+def get_all_assignments(today_only: bool = False, current_user: dict = Depends(get_current_user)):
+    """取得護病分配狀況清單 (支援僅篩選當日或全部歷史紀錄)"""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="僅限管理員存取")
         
-    query = text("""
-        SELECT 
-            ca.nurse_id, nurse.full_name AS nurse_name,
-            ca.patient_id, patient.full_name AS patient_name,
-            ca.shift_type, ca.assigned_date
-        FROM care_assignments ca
-        JOIN users nurse ON ca.nurse_id = nurse.id
-        JOIN users patient ON ca.patient_id = patient.id
-        ORDER BY ca.assigned_date DESC, ca.shift_type
-    """)
+    if today_only:
+        query = text("""
+            SELECT 
+                ca.nurse_id, nurse.full_name AS nurse_name,
+                ca.patient_id, patient.full_name AS patient_name,
+                ca.shift_type, ca.assigned_date
+            FROM care_assignments ca
+            JOIN users nurse ON ca.nurse_id = nurse.id
+            JOIN users patient ON ca.patient_id = patient.id
+            WHERE ca.assigned_date = CURDATE()
+            ORDER BY ca.shift_type
+        """)
+    else:
+        query = text("""
+            SELECT 
+                ca.nurse_id, nurse.full_name AS nurse_name,
+                ca.patient_id, patient.full_name AS patient_name,
+                ca.shift_type, ca.assigned_date
+            FROM care_assignments ca
+            JOIN users nurse ON ca.nurse_id = nurse.id
+            JOIN users patient ON ca.patient_id = patient.id
+            ORDER BY ca.assigned_date DESC, ca.shift_type
+        """)
     
     try:
         with engine.connect() as conn:
@@ -449,11 +462,11 @@ def get_all_assignments(current_user: dict = Depends(get_current_user)):
 
 @app.delete("/api/admin/assignments")
 def delete_assignment(patient_id: int, shift_type: str, current_user: dict = Depends(get_current_user)):
-    """刪除特定的護病分配"""
+    """刪除特定的當日護病分配 (保留歷史紀錄)"""
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="僅限管理員操作")
         
-    query = text("DELETE FROM care_assignments WHERE patient_id = :p_id AND shift_type = :shift")
+    query = text("DELETE FROM care_assignments WHERE patient_id = :p_id AND shift_type = :shift AND assigned_date = CURDATE()")
     
     try:
         with engine.connect() as conn:
@@ -627,6 +640,70 @@ def delete_user(user_id: int, current_user: dict = Depends(get_current_user)):
             return {"status": "success", "message": "人員及關聯資料刪除成功！"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"刪除人員失敗: {str(e)}")
+
+@app.get("/api/admin/patients/{patient_id}/details")
+def get_patient_clinical_detail(patient_id: int, current_user: dict = Depends(get_current_user)):
+    """取得特定病患的完整臨床病歷檔案 (包含基本資料、護病照護歷史與所有歷次傷口紀錄)"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="僅限管理員存取")
+    
+    try:
+        with engine.connect() as conn:
+            # 1. 查詢病患基本資料
+            info_query = text("""
+                SELECT u.id, u.full_name, u.username, p.bed_number, p.medical_history, u.created_at
+                FROM users u
+                LEFT JOIN patients_info p ON u.id = p.user_id
+                WHERE u.id = :p_id AND u.role = 'patient'
+            """)
+            info_row = conn.execute(info_query, {"p_id": patient_id}).fetchone()
+            if not info_row:
+                raise HTTPException(status_code=404, detail="找不到該病患")
+            
+            patient_info = info_row._asdict()
+            patient_info["created_at"] = patient_info["created_at"].strftime("%Y-%m-%d %H:%M") if patient_info["created_at"] else "無"
+            
+            # 2. 查詢護病照護歷史軌跡 (誰照顧過他)
+            care_query = text("""
+                SELECT ca.assigned_date, ca.shift_type, n.full_name AS nurse_name, n.username AS nurse_username
+                FROM care_assignments ca
+                JOIN users n ON ca.nurse_id = n.id
+                WHERE ca.patient_id = :p_id
+                ORDER BY ca.assigned_date DESC, ca.shift_type DESC
+            """)
+            care_history = []
+            for row in conn.execute(care_query, {"p_id": patient_id}):
+                r_dict = row._asdict()
+                r_dict["assigned_date"] = r_dict["assigned_date"].strftime("%Y-%m-%d") if r_dict["assigned_date"] else "無"
+                care_history.append(r_dict)
+                
+            # 3. 查詢歷次傷口評估紀錄
+            wound_query = text("""
+                SELECT wr.id, wr.image_url, wr.ai_grade, wr.ai_confidence, wr.ai_advice,
+                       wr.nurse_grade, wr.nurse_advice, wr.created_at, n.full_name AS nurse_name
+                FROM wound_records wr
+                JOIN users n ON wr.nurse_id = n.id
+                WHERE wr.patient_id = :p_id
+                ORDER BY wr.created_at DESC
+            """)
+            wound_history = []
+            for row in conn.execute(wound_query, {"p_id": patient_id}):
+                r_dict = row._asdict()
+                r_dict["created_at"] = r_dict["created_at"].strftime("%Y-%m-%d %H:%M") if r_dict["created_at"] else "無"
+                wound_history.append(r_dict)
+                
+            return {
+                "status": "success",
+                "data": {
+                    "info": patient_info,
+                    "care_history": care_history,
+                    "wound_history": wound_history
+                }
+            }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 6. 病患與護理師通用：AI 照護助理對話 API

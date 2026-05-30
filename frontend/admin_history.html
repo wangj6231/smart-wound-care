@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>護病歷史與病歷檔案 | 智慧傷口照護系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { medical: { 500: '#0ea5e9', 600: '#0284c7', 900: '#0c4a6e' } } } } }
+    </script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <nav class="bg-medical-900 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center space-x-6">
+                    <span class="text-white text-xl font-bold tracking-wider">系統管理控制台</span>
+                    <div class="hidden md:flex space-x-4">
+                        <a href="admin_dashboard.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">品質稽核總覽</a>
+                        <a href="admin_assignments.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">護病分配管理</a>
+                        <a href="admin_users.html" class="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition">人員帳號管理</a>
+                        <a href="admin_history.html" class="bg-medical-600 text-white px-3 py-2 rounded-md text-sm font-medium">護病歷史與檔案</a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="adminNameDisplay" class="text-gray-400 text-sm border-l border-gray-600 pl-4 hidden sm:block"></span>
+                    <button onclick="logout()" class="text-gray-400 hover:text-white text-sm font-medium transition ml-4">登出</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8 space-y-8">
+        
+        <!-- Header & Tabs Switcher -->
+        <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-4 border-b border-gray-200 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">護病歷史與病歷檔案</h1>
+                <p class="mt-2 text-sm text-gray-500">查閱病患臨床基本資料、雙軌歷史傷口影像，以及護理師的照護歷史軌跡。</p>
+            </div>
+            
+            <!-- Tab Buttons -->
+            <div class="flex bg-gray-100 p-1 rounded-xl shadow-inner border border-gray-200 w-fit">
+                <button onclick="switchTab('patient')" id="tabBtnPatient" class="px-5 py-2 rounded-lg font-bold text-sm transition bg-white text-medical-900 shadow">
+                    📁 病患病歷檔案
+                </button>
+                <button onclick="switchTab('nurse')" id="tabBtnNurse" class="px-5 py-2 rounded-lg font-bold text-sm transition text-gray-500 hover:text-gray-700">
+                    🩺 護理師照護歷史
+                </button>
+            </div>
+        </div>
+
+        <!-- ==================== TABS CONTENT ==================== -->
+
+        <!-- TAB 1: Patient Profile & Details -->
+        <div id="tabContentPatient" class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Left: Patient Search & List -->
+            <div class="lg:col-span-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[650px]">
+                <div class="p-4 border-b border-gray-100 bg-gray-50">
+                    <input type="text" id="patientSearchInput" oninput="filterPatientsList()" placeholder="搜尋病患姓名/床號..." 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-medical-500 focus:border-medical-500 transition">
+                </div>
+                <div id="patientList" class="flex-grow overflow-y-auto divide-y divide-gray-100">
+                    <!-- Loaded dynamically -->
+                    <div class="p-4 text-center text-gray-400 text-sm">載入中...</div>
+                </div>
+            </div>
+
+            <!-- Right: Patient Detail View -->
+            <div id="patientDetailView" class="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-6 min-h-[650px] flex flex-col justify-center items-center text-gray-400">
+                <svg class="w-16 h-16 opacity-30 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <p class="font-bold text-lg">請選擇左側病患以檢視完整檔案</p>
+            </div>
+        </div>
+
+        <!-- TAB 2: Nurse Care History -->
+        <div id="tabContentNurse" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Left: Nurse Search & List -->
+            <div class="lg:col-span-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[650px]">
+                <div class="p-4 border-b border-gray-100 bg-gray-50">
+                    <input type="text" id="nurseSearchInput" oninput="filterNursesList()" placeholder="搜尋護理師姓名..." 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-medical-500 focus:border-medical-500 transition">
+                </div>
+                <div id="nurseList" class="flex-grow overflow-y-auto divide-y divide-gray-100">
+                    <!-- Loaded dynamically -->
+                    <div class="p-4 text-center text-gray-400 text-sm">載入中...</div>
+                </div>
+            </div>
+
+            <!-- Right: Nurse History Details -->
+            <div id="nurseDetailView" class="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-6 min-h-[650px] flex flex-col justify-center items-center text-gray-400">
+                <svg class="w-16 h-16 opacity-30 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                <p class="font-bold text-lg">請選擇左側護理師以檢視照護歷史</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 雙軌對比詳情 Modal (與稽核控制台相同樣式) -->
+    <div id="detailModal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeDetailModal()"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            
+            <div class="inline-block align-bottom bg-slate-50 rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+                <!-- Header -->
+                <div class="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900" id="modalTitle">病患詳細雙軌照護紀錄</h3>
+                        <p class="text-xs text-gray-500 mt-1" id="modalSubTitle">紀錄時間: -- | 負責護理師: --</p>
+                    </div>
+                    <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600 transition">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+                
+                <!-- Content Body -->
+                <div class="p-6 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- Left: Wound Photo -->
+                        <div class="md:col-span-1 flex flex-col justify-center bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                            <h4 class="text-sm font-bold text-gray-700 mb-3 border-l-4 border-medical-500 pl-2">傷口影像</h4>
+                            <div class="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+                                <img id="modalWoundImg" src="" alt="傷口照片" class="w-full h-full object-cover">
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Dual track comparison -->
+                        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <!-- AI Advice (Blue) -->
+                            <div class="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                                <div class="flex items-center space-x-2 text-blue-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                                    <h4 class="font-bold text-md">AI 客觀判定</h4>
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-50">
+                                        <p class="text-xxs text-gray-400 font-bold uppercase">分級</p>
+                                        <p id="modalAiGrade" class="text-base font-bold text-blue-700 mt-0.5">--</p>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-lg shadow-sm border border-blue-50">
+                                        <p class="text-xxs text-gray-400 font-bold uppercase">信心度</p>
+                                        <p id="modalAiConfidence" class="text-base font-bold text-green-600 mt-0.5">--%</p>
+                                    </div>
+                                </div>
+                                <div class="bg-white p-3.5 rounded-lg shadow-sm border border-blue-50">
+                                    <p class="text-xxs text-gray-400 font-bold mb-1">照護指引建議</p>
+                                    <p id="modalAiAdvice" class="text-xs text-gray-700 leading-relaxed"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Nurse Advice (Green) -->
+                            <div class="bg-green-50 border border-green-100 rounded-xl p-5 shadow-sm space-y-4 relative overflow-hidden">
+                                <div class="absolute top-0 left-0 w-1.5 h-full bg-green-500"></div>
+                                <div class="flex items-center space-x-2 text-green-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                    <h4 class="font-bold text-md">護理師判斷</h4>
+                                </div>
+                                <div class="bg-white p-3 rounded-lg shadow-sm border border-green-50">
+                                    <p class="text-xxs text-gray-400 font-bold uppercase">臨床分級</p>
+                                    <p id="modalNurseGrade" class="text-base font-bold text-green-700 mt-0.5">--</p>
+                                </div>
+                                <div class="bg-white p-3.5 rounded-lg shadow-sm border border-green-50">
+                                    <p class="text-xxs text-gray-400 font-bold mb-1">臨床處置與建議</p>
+                                    <p id="modalNurseAdvice" class="text-xs text-gray-700 leading-relaxed"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="bg-white px-6 py-4 border-t border-gray-200 flex justify-end">
+                    <button onclick="closeDetailModal()" class="bg-medical-900 hover:bg-medical-800 text-white font-bold py-2.5 px-6 rounded-lg shadow-sm transition">
+                        關閉視窗
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('access_token');
+        const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+        if (!token || userInfo.role !== 'admin') window.location.href = 'login.html';
+        
+        document.getElementById('adminNameDisplay').textContent = `${userInfo.full_name} (管理員)`;
+
+        // 全域變數
+        window.activeTab = 'patient';
+        window.nurses = [];
+        window.patients = [];
+        window.assignments = []; // 全歷史指派任務
+        window.selectedPatientId = null;
+        window.selectedNurseId = null;
+        window.currentWoundHistory = []; // 病患傷口歷史快照
+
+        const shiftLabels = { 'day': '白班', 'evening': '小夜班', 'night': '大夜班' };
+
+        // 1. 初始化資料載入
+        async function initPage() {
+            try {
+                // A. 載入護理師與病患基本清單
+                const optionsRes = await fetch('/api/admin/assignment-options', { headers: { 'Authorization': `Bearer ${token}` } });
+                const optionsResult = await optionsRes.json();
+                window.nurses = optionsResult.data.nurses;
+                window.patients = optionsResult.data.patients;
+
+                // B. 載入全歷史分配數據 (today_only = false)
+                const assignmentsRes = await fetch('/api/admin/assignments?today_only=false', { headers: { 'Authorization': `Bearer ${token}` } });
+                const assignmentsResult = await assignmentsRes.json();
+                window.assignments = assignmentsResult.data;
+
+                // 渲染左側清單
+                renderPatientsList();
+                renderNursesList();
+
+            } catch (error) {
+                console.error("頁面初始化載入失敗", error);
+            }
+        }
+
+        // 2. 切換頁籤
+        function switchTab(tab) {
+            window.activeTab = tab;
+            
+            const btnPatient = document.getElementById('tabBtnPatient');
+            const btnNurse = document.getElementById('tabBtnNurse');
+            const contentPatient = document.getElementById('tabContentPatient');
+            const contentNurse = document.getElementById('tabContentNurse');
+
+            if (tab === 'patient') {
+                btnPatient.className = "px-5 py-2 rounded-lg font-bold text-sm transition bg-white text-medical-900 shadow";
+                btnNurse.className = "px-5 py-2 rounded-lg font-bold text-sm transition text-gray-500 hover:text-gray-700";
+                contentPatient.classList.remove('hidden');
+                contentNurse.classList.add('hidden');
+            } else {
+                btnNurse.className = "px-5 py-2 rounded-lg font-bold text-sm transition bg-white text-medical-900 shadow";
+                btnPatient.className = "px-5 py-2 rounded-lg font-bold text-sm transition text-gray-500 hover:text-gray-700";
+                contentNurse.classList.remove('hidden');
+                contentPatient.classList.add('hidden');
+            }
+        }
+
+        // ==================== 病患病歷區 ====================
+
+        function renderPatientsList(filtered = null) {
+            const list = document.getElementById('patientList');
+            list.innerHTML = '';
+            
+            const targets = filtered || window.patients;
+            if (targets.length === 0) {
+                list.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">無符合的病患</div>`;
+                return;
+            }
+
+            targets.forEach(p => {
+                const isSelected = p.id === window.selectedPatientId;
+                list.innerHTML += `
+                    <button onclick="selectPatient(${p.id})" class="w-full text-left p-4 hover:bg-slate-50 transition flex justify-between items-center ${isSelected ? 'bg-blue-50 border-r-4 border-medical-600 font-bold' : ''}">
+                        <div>
+                            <div class="text-gray-900 text-sm font-bold">${p.name}</div>
+                            <div class="text-xs text-gray-500 mt-0.5">床號: ${p.bed_number}</div>
+                        </div>
+                        <span class="text-xxs text-gray-400 font-semibold">${p.id}</span>
+                    </button>
+                `;
+            });
+        }
+
+        function filterPatientsList() {
+            const query = document.getElementById('patientSearchInput').value.trim().toLowerCase();
+            const filtered = window.patients.filter(p => 
+                p.name.toLowerCase().includes(query) || 
+                p.bed_number.toLowerCase().includes(query)
+            );
+            renderPatientsList(filtered);
+        }
+
+        async function selectPatient(patientId) {
+            window.selectedPatientId = patientId;
+            renderPatientsList(); // 重新整理高亮狀態
+
+            const detailView = document.getElementById('patientDetailView');
+            detailView.innerHTML = `<div class="text-center py-10 text-gray-400 text-sm">載入病患病歷中...</div>`;
+
+            try {
+                const res = await fetch(`/api/admin/patients/${patientId}/details`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const result = await res.json();
+                
+                if (result.status === 'success') {
+                    const data = result.data;
+                    window.currentWoundHistory = data.wound_history; // 快照儲存
+                    renderPatientDetail(data);
+                } else {
+                    detailView.innerHTML = `<div class="text-red-500 p-4">無法取得病患資料：${result.detail}</div>`;
+                }
+            } catch (error) {
+                console.error(error);
+                detailView.innerHTML = `<div class="text-red-500 p-4">載入失敗，請確認網路連線。</div>`;
+            }
+        }
+
+        function renderPatientDetail(data) {
+            const detailView = document.getElementById('patientDetailView');
+            detailView.className = "lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-6 min-h-[650px] flex flex-col space-y-6";
+
+            // A. 基本資料卡片
+            const info = data.info;
+            let infoHtml = `
+                <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-medical-600"></div>
+                    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                        <div>
+                            <span class="text-xxs font-bold bg-medical-500 text-white px-2 py-0.5 rounded-full">病患基本資料</span>
+                            <h2 class="text-2xl font-bold text-gray-900 mt-1">${info.full_name}</h2>
+                            <p class="text-xs text-gray-400 mt-0.5">系統帳號代碼: ${info.username} | 建立時間: ${info.created_at}</p>
+                        </div>
+                        <div class="bg-white px-4 py-2 border border-gray-200 rounded-lg shadow-inner">
+                            <span class="text-xxs text-gray-400 uppercase font-bold">病床號碼</span>
+                            <div class="text-base font-bold text-medical-900 mt-0.5">${info.bed_number || '未指派'}</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-200 text-sm">
+                        <span class="font-bold text-gray-700 block mb-1">📋 特殊病史 / 臨床備註：</span>
+                        <div class="bg-white p-3 rounded-lg border border-gray-100 text-gray-600 leading-relaxed">${info.medical_history || '無特殊病史記錄'}</div>
+                    </div>
+                </div>
+            `;
+
+            // B. 護病指派歷史
+            let careHtml = `
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-3 border-l-4 border-medical-600 pl-2.5">照護護理師軌跡歷史</h3>
+                    <div class="overflow-x-auto border border-gray-200 rounded-xl">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">照護日期</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">時段班別</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">負責護理師</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">員工代碼</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+            `;
+            if (data.care_history.length === 0) {
+                careHtml += `<tr><td colspan="4" class="px-5 py-6 text-center text-gray-400 italic">目前尚無歷史護病分配紀錄</td></tr>`;
+            } else {
+                data.care_history.forEach(item => {
+                    const shiftBadge = item.shift_type === 'day' 
+                        ? '<span class="text-yellow-600 font-bold bg-yellow-50 px-2 py-0.5 rounded-full text-xs">☀️ 白班</span>'
+                        : item.shift_type === 'evening'
+                        ? '<span class="text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full text-xs">🌆 小夜</span>'
+                        : '<span class="text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-full text-xs">🌙 大夜</span>';
+                    
+                    careHtml += `
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-5 py-3 whitespace-nowrap text-gray-700">${item.assigned_date}</td>
+                            <td class="px-5 py-3 whitespace-nowrap">${shiftBadge}</td>
+                            <td class="px-5 py-3 whitespace-nowrap font-bold text-gray-900">${item.nurse_name}</td>
+                            <td class="px-5 py-3 whitespace-nowrap text-gray-400">${item.nurse_username}</td>
+                        </tr>
+                    `;
+                });
+            }
+            careHtml += `</tbody></table></div></div>`;
+
+            // C. 歷次傷口評估歷史
+            let woundHtml = `
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-3 border-l-4 border-sky-500 pl-2.5">歷史雙軌傷口照護紀錄</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            `;
+            if (data.wound_history.length === 0) {
+                woundHtml += `<div class="col-span-full py-8 text-center text-gray-400 italic border border-dashed border-gray-200 rounded-xl bg-gray-50">該病患目前無臨床傷口影像評估紀錄</div>`;
+            } else {
+                data.wound_history.forEach(w => {
+                    const hasDisc = w.ai_grade !== w.nurse_grade;
+                    const borderClass = hasDisc ? 'border-red-200 bg-red-50 bg-opacity-30' : 'border-gray-200 hover:border-medical-500';
+                    const badgeClass = hasDisc 
+                        ? 'bg-red-100 text-red-800 border border-red-200' 
+                        : 'bg-green-100 text-green-800';
+                    const statusText = hasDisc ? '判定有落差' : '評估一致';
+                    
+                    woundHtml += `
+                        <div onclick="openWoundDetail(${w.id})" class="border rounded-xl p-4 flex gap-4 cursor-pointer hover:shadow transition ${borderClass}">
+                            <div class="w-20 h-20 rounded-lg overflow-hidden border border-gray-100 bg-slate-50 flex-shrink-0 flex items-center justify-center">
+                                <img src="${w.image_url}" class="w-full h-full object-cover" alt="傷口">
+                            </div>
+                            <div class="flex-grow space-y-1.5 min-w-0 text-xs">
+                                <div class="flex justify-between items-center gap-2">
+                                    <span class="font-bold text-gray-900">${w.created_at}</span>
+                                    <span class="inline-flex px-2 py-0.5 rounded-full text-xxs font-bold ${badgeClass}">${statusText}</span>
+                                </div>
+                                <div class="text-gray-500 truncate">負責人員: ${w.nurse_name}</div>
+                                <div class="grid grid-cols-2 gap-2 mt-1">
+                                    <div class="bg-blue-50 border border-blue-100 p-1 px-2 rounded text-blue-800">
+                                        AI: <span class="font-bold">${w.ai_grade}</span>
+                                    </div>
+                                    <div class="bg-green-50 border border-green-100 p-1 px-2 rounded text-green-800">
+                                        護士: <span class="font-bold">${w.nurse_grade}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            woundHtml += `</div></div>`;
+
+            // 組合寫入
+            detailView.innerHTML = infoHtml + careHtml + woundHtml;
+        }
+
+        function openWoundDetail(recordId) {
+            const record = window.currentWoundHistory.find(w => w.id === recordId);
+            if (!record) return;
+
+            document.getElementById('modalTitle').textContent = `歷史雙軌評估紀錄`;
+            document.getElementById('modalSubTitle').textContent = `評估時間: ${record.created_at} | 負責護理師: ${record.nurse_name}`;
+            
+            document.getElementById('modalWoundImg').src = record.image_url;
+            
+            document.getElementById('modalAiGrade').textContent = record.ai_grade;
+            document.getElementById('modalAiConfidence').textContent = record.ai_confidence ? (record.ai_confidence * 100).toFixed(1) + '%' : '0.0%';
+            document.getElementById('modalAiAdvice').textContent = record.ai_advice || '無';
+
+            document.getElementById('modalNurseGrade').textContent = record.nurse_grade;
+            document.getElementById('modalNurseAdvice').textContent = record.nurse_advice || '無';
+
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        // ==================== 護理師區 ====================
+
+        function renderNursesList(filtered = null) {
+            const list = document.getElementById('nurseList');
+            list.innerHTML = '';
+            
+            const targets = filtered || window.nurses;
+            if (targets.length === 0) {
+                list.innerHTML = `<div class="p-4 text-center text-gray-400 text-sm">無符合的護理師</div>`;
+                return;
+            }
+
+            targets.forEach(n => {
+                const isSelected = n.id === window.selectedNurseId;
+                list.innerHTML += `
+                    <button onclick="selectNurse(${n.id})" class="w-full text-left p-4 hover:bg-slate-50 transition flex justify-between items-center ${isSelected ? 'bg-blue-50 border-r-4 border-medical-600 font-bold' : ''}">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
+                            <span class="text-gray-900 text-sm font-bold">${n.name}</span>
+                        </div>
+                        <span class="text-xxs text-gray-400 font-semibold">${n.id}</span>
+                    </button>
+                `;
+            });
+        }
+
+        function filterNursesList() {
+            const query = document.getElementById('nurseSearchInput').value.trim().toLowerCase();
+            const filtered = window.nurses.filter(n => n.name.toLowerCase().includes(query));
+            renderNursesList(filtered);
+        }
+
+        function selectNurse(nurseId) {
+            window.selectedNurseId = nurseId;
+            renderNursesList();
+
+            const detailView = document.getElementById('nurseDetailView');
+            const nurse = window.nurses.find(x => x.id === nurseId);
+            if (!nurse) return;
+
+            detailView.className = "lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-6 min-h-[650px] flex flex-col space-y-6";
+
+            // 篩選該護理師的所有歷史照護紀錄
+            const nurseAss = window.assignments.filter(a => a.nurse_id === nurseId);
+
+            // 標頭
+            let html = `
+                <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 shadow-sm relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-indigo-600"></div>
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="text-xxs font-bold bg-indigo-500 text-white px-2 py-0.5 rounded-full">護理師臨床照護歷程</span>
+                            <h2 class="text-2xl font-bold text-gray-900 mt-1">${nurse.name}</h2>
+                        </div>
+                        <div class="bg-white px-4 py-2 border border-gray-200 rounded-lg shadow-inner">
+                            <span class="text-xxs text-gray-400 uppercase font-bold">歷史累計照護任務</span>
+                            <div class="text-base font-bold text-indigo-900 mt-0.5 text-center">${nurseAss.length} 次</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 表格
+            let tableHtml = `
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800 mb-3 border-l-4 border-indigo-600 pl-2.5">歷史照顧過的所有病患清單</h3>
+                    <div class="overflow-x-auto border border-gray-200 rounded-xl">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">照護日期</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">照護時段</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">病患姓名</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">病房床號</th>
+                                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">病患臨床病史/備註</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+            `;
+
+            if (nurseAss.length === 0) {
+                tableHtml += `<tr><td colspan="5" class="px-5 py-6 text-center text-gray-400 italic">該護理師目前尚無任何照護分派紀錄</td></tr>`;
+            } else {
+                nurseAss.forEach(ass => {
+                    const shiftBadge = ass.shift_type === 'day' 
+                        ? '<span class="text-yellow-600 font-bold bg-yellow-50 px-2 py-0.5 rounded-full text-xs">☀️ 白班</span>'
+                        : ass.shift_type === 'evening'
+                        ? '<span class="text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full text-xs">🌆 小夜</span>'
+                        : '<span class="text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-full text-xs">🌙 大夜</span>';
+
+                    // 找出該病患的病床與病史資料 (從 window.patients 關聯)
+                    const p = window.patients.find(x => x.id === ass.patient_id);
+                    const bedNum = p ? p.bed_number : '—';
+                    const history = p ? p.medical_history : '無';
+
+                    tableHtml += `
+                        <tr class="hover:bg-gray-50 transition">
+                            <td class="px-5 py-3 whitespace-nowrap text-gray-700">${ass.assigned_date}</td>
+                            <td class="px-5 py-3 whitespace-nowrap">${shiftBadge}</td>
+                            <td class="px-5 py-3 whitespace-nowrap font-bold text-gray-900">${ass.patient_name}</td>
+                            <td class="px-5 py-3 whitespace-nowrap text-gray-700">${bedNum}</td>
+                            <td class="px-5 py-3 text-gray-500 max-w-xs truncate" title="${history}">${history}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            tableHtml += `</tbody></table></div></div>`;
+            detailView.innerHTML = html + tableHtml;
+        }
+
+        // ==================== 共用 ====================
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        // 載入執行
+        initPage();
+    </script>
+</body>
+</html>
