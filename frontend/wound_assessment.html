@@ -186,37 +186,61 @@
             }
         }
 
-        // --- 3. 模擬呼叫 AI 模型 API ---
-        function analyzeImage() {
-            // 在實務中，這裡會將 input.files[0] 打包成 FormData 送給後端 FastAPI
-            // 目前先用 setTimeout 模擬網路延遲與 YOLOv8 的辨識過程
-            
-            const btn = event.target;
+        let lastAnnotatedImageUrl = null;
+
+        // --- 3. 呼叫 YOLOv8 AI 模型 API ---
+        async function analyzeImage() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert("請先選擇或拖放一張傷口圖片，再進行 AI 辨識！");
+                return;
+            }
+
+            const btn = event.currentTarget || event.target;
             const originalText = btn.textContent;
             btn.textContent = "AI 分析中，請稍候...";
             btn.disabled = true;
             btn.classList.add('opacity-70');
 
-            setTimeout(() => {
-                // 模擬後端回傳的 YOLOv8 辨識結果
-                const mockAiResult = {
-                    grade: "Grade 2",
-                    confidence: 94.5,
-                    advice: "AI 偵測為二級傷口。建議使用生理食鹽水清潔，並使用親水性敷料保持濕潤，防止感染。"
-                };
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
 
-                // 將結果渲染到畫面上
-                document.getElementById('aiGrade').textContent = mockAiResult.grade;
-                document.getElementById('aiConfidence').textContent = mockAiResult.confidence + "%";
-                document.getElementById('aiAdvice').textContent = mockAiResult.advice;
-                
-                document.getElementById('aiResultBlock').classList.remove('hidden');
-                
+            try {
+                const response = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // 將結果渲染到畫面上
+                    document.getElementById('aiGrade').textContent = result.ai_grade;
+                    // 將 confidence 浮點數轉換成百分比字串 (例如 0.945 -> 94.5%)
+                    const confidencePercent = (result.ai_confidence * 100).toFixed(1) + "%";
+                    document.getElementById('aiConfidence').textContent = confidencePercent;
+                    document.getElementById('aiAdvice').textContent = result.ai_advice;
+                    
+                    document.getElementById('aiResultBlock').classList.remove('hidden');
+
+                    // 儲存標註影像的 URL 並更新預覽圖為 AI 標註影像，讓護理師看到辨識紅框
+                    lastAnnotatedImageUrl = result.annotated_image_url;
+                    document.getElementById('imagePreview').src = result.annotated_image_url;
+                } else {
+                    alert(`AI 辨識失敗：${result.detail}`);
+                }
+            } catch (error) {
+                console.error('Error analyzing image:', error);
+                alert('無法連線至 AI 辨識伺服器。');
+            } finally {
                 // 恢復按鈕狀態
                 btn.textContent = originalText;
                 btn.disabled = false;
                 btn.classList.remove('opacity-70');
-            }, 1500); // 模擬 1.5 秒的分析時間
+            }
         }
 
         // --- 4. 提交雙軌紀錄 ---
@@ -261,9 +285,14 @@
             const confValue = hasAiResult ? parseFloat(aiConfidenceText.replace('%', '')) / 100 : 0;
             formData.append('ai_confidence', confValue);
             formData.append('ai_advice', hasAiResult ? aiAdvice : '未啟用 AI 輔助');
+            
+            // 帶入標註影像 URL
+            if (hasAiResult && lastAnnotatedImageUrl) {
+                formData.append('annotated_image_url', lastAnnotatedImageUrl);
+            }
 
             // 更改按鈕狀態，避免重複點擊
-            const submitBtn = event.target;
+            const submitBtn = event.currentTarget || event.target;
             const originalBtnText = submitBtn.textContent;
             submitBtn.textContent = "儲存中，請稍候...";
             submitBtn.disabled = true;
@@ -321,8 +350,15 @@
                 result.data.forEach(record => {
                     htmlString += `
                         <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-5 flex flex-col md:flex-row gap-6">
-                            <div class="md:w-1/3 rounded overflow-hidden flex items-center justify-center border border-gray-200 h-48 bg-gray-50">
-                                <img src="${record.image_url}" class="w-full h-full object-cover" alt="傷口照片">
+                            <div class="md:w-1/3 flex flex-col gap-2">
+                                <div class="rounded overflow-hidden flex items-center justify-center border border-gray-200 h-36 bg-gray-50">
+                                    <img src="${record.image_url}" class="w-full h-full object-cover" alt="原始照片">
+                                </div>
+                                ${record.annotated_image_url ? `
+                                <div class="rounded overflow-hidden flex items-center justify-center border border-blue-200 h-36 bg-gray-50">
+                                    <img src="${record.annotated_image_url}" class="w-full h-full object-cover" alt="AI標註照片">
+                                </div>
+                                ` : ''}
                             </div>
                             <div class="md:w-2/3 space-y-4">
                                 <div class="flex justify-between items-start border-b pb-2">
@@ -337,7 +373,7 @@
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
                                     <div class="bg-blue-50 p-3 rounded">
-                                        <p class="text-xs text-gray-500 font-bold mb-1">AI 判定 (${record.ai_confidence * 100}%)</p>
+                                        <p class="text-xs text-gray-500 font-bold mb-1">AI 判定 (${(record.ai_confidence * 100).toFixed(1)}%)</p>
                                         <p class="font-bold text-blue-700">${record.ai_grade}</p>
                                         <p class="text-xs text-gray-600 mt-1 line-clamp-2">${record.ai_advice}</p>
                                     </div>

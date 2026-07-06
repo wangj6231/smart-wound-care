@@ -119,10 +119,21 @@
                 <div class="p-6 space-y-6">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <!-- Left: Wound Photo -->
-                        <div class="md:col-span-1 flex flex-col justify-center bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-                            <h4 class="text-sm font-bold text-gray-700 mb-3 border-l-4 border-medical-500 pl-2">傷口影像</h4>
-                            <div class="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
-                                <img id="modalWoundImg" src="" alt="傷口照片" class="w-full h-full object-cover">
+                        <div class="md:col-span-1 flex flex-col bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3">
+                            <h4 class="text-sm font-bold text-gray-700 border-l-4 border-medical-500 pl-2">傷口影像</h4>
+                            <div class="space-y-3">
+                                <div>
+                                    <span class="text-xxs text-gray-400 font-bold uppercase block mb-1">原始相片</span>
+                                    <div class="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center">
+                                        <img id="modalWoundImg" src="" alt="傷口照片" class="w-full h-full object-cover">
+                                    </div>
+                                </div>
+                                <div id="modalAnnotatedImgContainer" class="hidden">
+                                    <span class="text-xxs text-blue-500 font-bold uppercase block mb-1">YOLOv8 AI 標註影像</span>
+                                    <div class="aspect-square bg-gray-50 rounded-lg overflow-hidden border border-blue-100 flex items-center justify-center">
+                                        <img id="modalAnnotatedWoundImg" src="" alt="AI標註照片" class="w-full h-full object-cover">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -323,6 +334,36 @@
                             <div class="text-base font-bold text-medical-900 mt-0.5">${info.bed_number || '未指派'}</div>
                         </div>
                     </div>
+                    <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 pt-3 border-t border-gray-200 text-sm">
+                        <div>
+                            <span class="text-xs text-gray-400 block font-semibold uppercase">性別</span>
+                            <span class="font-medium text-gray-800">${info.gender || '未填寫'}</span>
+                        </div>
+                        <div>
+                            <span class="text-xs text-gray-400 block font-semibold uppercase">年齡</span>
+                            <span class="font-medium text-gray-800">${info.age ? info.age + ' 歲' : '未填寫'}</span>
+                        </div>
+                        <div>
+                            <span class="text-xs text-gray-400 block font-semibold uppercase">入院日期</span>
+                            <span class="font-medium text-gray-800">${info.admission_date || '未填寫'}</span>
+                        </div>
+                        <div>
+                            <span class="text-xs text-gray-400 block font-semibold uppercase">個案狀態</span>
+                            <span class="px-2 py-0.5 text-xs font-bold rounded-full ${
+                                info.status === 'red' ? 'bg-red-100 text-red-800' :
+                                info.status === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-green-100 text-green-800'
+                            }">${
+                                info.status === 'red' ? '🚨 危急 (Red)' :
+                                info.status === 'yellow' ? '⚠️ 追蹤 (Yellow)' :
+                                '✅ 穩定 (Green)'
+                            }</span>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-gray-200 text-sm">
+                        <span class="font-bold text-gray-700 block mb-1">🚫 藥物 / 食物過敏史：</span>
+                        <div class="bg-red-50 p-2.5 rounded-lg border border-red-100 text-red-800 font-medium">${info.allergies || '無特定過敏史'}</div>
+                    </div>
                     <div class="mt-4 pt-3 border-t border-gray-200 text-sm">
                         <span class="font-bold text-gray-700 block mb-1">📋 特殊病史 / 臨床備註：</span>
                         <div class="bg-white p-3 rounded-lg border border-gray-100 text-gray-600 leading-relaxed">${info.medical_history || '無特殊病史記錄'}</div>
@@ -423,6 +464,16 @@
             document.getElementById('modalSubTitle').textContent = `評估時間: ${record.created_at} | 負責護理師: ${record.nurse_name}`;
             
             document.getElementById('modalWoundImg').src = record.image_url;
+            
+            const annotatedContainer = document.getElementById('modalAnnotatedImgContainer');
+            const annotatedImg = document.getElementById('modalAnnotatedWoundImg');
+            if (record.annotated_image_url) {
+                annotatedContainer.classList.remove('hidden');
+                annotatedImg.src = record.annotated_image_url;
+            } else {
+                annotatedContainer.classList.add('hidden');
+                annotatedImg.src = '';
+            }
             
             document.getElementById('modalAiGrade').textContent = record.ai_grade;
             document.getElementById('modalAiConfidence').textContent = record.ai_confidence ? (record.ai_confidence * 100).toFixed(1) + '%' : '0.0%';

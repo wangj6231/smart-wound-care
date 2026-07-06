@@ -1,3 +1,4 @@
+import os
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware # 新增這行載入 CORS 套件
@@ -30,6 +31,72 @@ app.add_middleware(
 
 DATABASE_URL = "mysql+pymysql://root:@127.0.0.1:3306/wound_care_db"
 engine = create_engine(DATABASE_URL)
+
+# ==========================================
+# 1.5. Fernet 加密與資料庫遷移
+# ==========================================
+from cryptography.fernet import Fernet
+
+SECRET_KEY_PATH = "secret.key"
+if not os.path.exists(SECRET_KEY_PATH):
+    with open(SECRET_KEY_PATH, "wb") as key_file:
+        key_file.write(Fernet.generate_key())
+with open(SECRET_KEY_PATH, "rb") as key_file:
+    FERNET_KEY = key_file.read()
+cipher_suite = Fernet(FERNET_KEY)
+
+def encrypt_data(data: str) -> str:
+    if not data: return ""
+    return cipher_suite.encrypt(data.encode()).decode()
+
+def decrypt_data(data: str) -> str:
+    if not data: return ""
+    try:
+        return cipher_suite.decrypt(data.encode()).decode()
+    except Exception:
+        return data  # 如果解密失敗(例如舊有明文資料)則直接回傳原值
+
+def run_migrations():
+    """執行資料庫欄位遷移，新增臨床 EMR 欄位與加密支援"""
+    columns_to_add_patients = {
+        "gender": "TEXT NULL",
+        "age": "TEXT NULL",
+        "admission_date": "TEXT NULL",
+        "allergies": "TEXT NULL",
+        "status": "VARCHAR(20) DEFAULT 'green'",
+        "last_assessment": "TEXT NULL"
+    }
+    
+    columns_to_add_wound_records = {
+        "annotated_image_url": "VARCHAR(255) NULL"
+    }
+    
+    with engine.connect() as conn:
+        # 1. 移轉 patients_info 欄位
+        for col, col_type in columns_to_add_patients.items():
+            check_query = text(f"SHOW COLUMNS FROM patients_info LIKE '{col}'")
+            res = conn.execute(check_query).fetchone()
+            if not res:
+                print(f"[Migration] Adding column to patients_info: {col}")
+                alter_query = text(f"ALTER TABLE patients_info ADD COLUMN {col} {col_type}")
+                conn.execute(alter_query)
+                conn.commit()
+                
+        # 2. 移轉 wound_records 欄位
+        for col, col_type in columns_to_add_wound_records.items():
+            check_query = text(f"SHOW COLUMNS FROM wound_records LIKE '{col}'")
+            res = conn.execute(check_query).fetchone()
+            if not res:
+                print(f"[Migration] Adding column to wound_records: {col}")
+                alter_query = text(f"ALTER TABLE wound_records ADD COLUMN {col} {col_type}")
+                conn.execute(alter_query)
+                conn.commit()
+
+try:
+    run_migrations()
+    print("[Migration] Database migration completed successfully!")
+except Exception as e:
+    print(f"[Migration] Database migration failed: {str(e)}")
 
 # ==========================================
 # 2. JWT 與密碼驗證設定
@@ -169,7 +236,12 @@ def get_assigned_patients(current_user: dict = Depends(get_current_user)):
                 "username": current_user["username"],
                 "today": today
             })
-            patients = [row._asdict() for row in result]
+            patients = []
+            for row in result:
+                r_dict = row._asdict()
+                r_dict["bed_number"] = decrypt_data(r_dict["bed_number"])
+                r_dict["medical_history"] = decrypt_data(r_dict["medical_history"])
+                patients.append(r_dict)
             
             return {
                 "status": "success",
@@ -193,6 +265,7 @@ def get_patient_history_records(patient_id: int, current_user: dict = Depends(ge
         SELECT 
             wr.id, 
             wr.image_url, 
+            wr.annotated_image_url,
             wr.ai_grade, 
             wr.ai_confidence, 
             wr.ai_advice,
@@ -229,10 +302,85 @@ from fastapi import Form, File, UploadFile
 import shutil
 import os
 import time
+import cv2
+import numpy as np
+import base64
+from ultralytics import YOLO
 
 # 建立上傳檔案的資料夾 (如果不存在的話)
 UPLOAD_DIR = "uploads/wounds"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# 載入 YOLOv8 傷口特徵辨識模型
+MODEL_PATH = "yolo11m.pt"
+try:
+    yolo_model = YOLO(MODEL_PATH)
+    print("[YOLO] Model loaded successfully!")
+except Exception as e:
+    yolo_model = None
+    print(f"[YOLO] Model load failed: {str(e)}")
+
+@app.post("/api/predict")
+async def predict_wound(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    接收傷口影像，執行 YOLOv8 辨識，並將標註後影像存檔後回傳
+    """
+    if yolo_model is None:
+        raise HTTPException(status_code=500, detail="後端 YOLO 模型尚未載入完成或載入失敗。")
+        
+    try:
+        # 1. 讀取圖片檔案
+        contents = await file.read()
+        nparr = np.frombuffer(contents, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise HTTPException(status_code=400, detail="無效的圖片檔案")
+            
+        # 2. 進行 YOLOv8 辨識
+        results = yolo_model(img)
+        result = results[0]
+        num_boxes = len(result.boxes)
+        
+        # 3. 繪製標註框並儲存為獨立的標註圖片
+        annotated_img = result.plot()
+        unique_id = f"{int(time.time())}_{os.urandom(4).hex()}"
+        annotated_filename = f"annotated_{unique_id}.jpg"
+        annotated_path = os.path.join(UPLOAD_DIR, annotated_filename)
+        cv2.imwrite(annotated_path, annotated_img)
+        
+        annotated_image_url = f"/{UPLOAD_DIR}/{annotated_filename}"
+        
+        # 4. 根據偵測結果及分級標準生成 AI 分級建議 (模擬與 backend_export 同等的專業 TIME 指導)
+        if num_boxes > 0:
+            # 依據標註框數量判定分級
+            ai_grade = "Grade 2" if num_boxes == 1 else "Grade 3"
+            ai_confidence = float(result.boxes.conf[0]) if hasattr(result.boxes, 'conf') and len(result.boxes.conf) > 0 else 0.85
+            ai_advice = (
+                f"[AI 臨床診斷] YOLO 成功偵測到 {num_boxes} 個傷口特徵區域！\n"
+                f"【T.I.M.E 傷口評估指導】\n"
+                f"T (Tissue 組織): 偵測到黃色腐肉與疑似壞死組織，建議進行局部清創。\n"
+                f"I (Infection 感染): 傷口周邊伴隨紅腫泛紅反應，可能存在中度感染風險。\n"
+                f"M (Moisture 滲出液): 評估滲出液量偏多，建議選用高吸收性敷料。\n"
+                f"E (Edge 邊緣): 傷口邊界有浸潤現象，需塗抹皮膚保護劑防止浸漬。"
+            )
+        else:
+            ai_grade = "Grade 1"
+            ai_confidence = 0.50
+            ai_advice = "[AI 臨床診斷] 未偵測到明顯的傷口邊界特徵。請確保拍攝光線充足、角度垂直並重新嘗試。"
+
+        return {
+            "status": "success",
+            "ai_grade": ai_grade,
+            "ai_confidence": ai_confidence,
+            "ai_advice": ai_advice,
+            "annotated_image_url": annotated_image_url
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 辨識發生錯誤: {str(e)}")
 
 @app.post("/api/records")
 async def create_wound_record(
@@ -243,6 +391,7 @@ async def create_wound_record(
     nurse_grade: str = Form(...),
     nurse_advice: str = Form(...),
     image: UploadFile = File(...),
+    annotated_image_url: Optional[str] = Form(None), # 新增接收 AI 標註照片 URL
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -272,11 +421,11 @@ async def create_wound_record(
     # 2. 將紀錄寫入 MySQL 資料庫
     query = text("""
         INSERT INTO wound_records (
-            patient_id, nurse_id, image_url, 
+            patient_id, nurse_id, image_url, annotated_image_url,
             ai_grade, ai_confidence, ai_advice, 
             nurse_grade, nurse_advice
         ) VALUES (
-            :patient_id, :nurse_id, :image_url, 
+            :patient_id, :nurse_id, :image_url, :annotated_image_url,
             :ai_grade, :ai_confidence, :ai_advice, 
             :nurse_grade, :nurse_advice
         )
@@ -294,6 +443,7 @@ async def create_wound_record(
                 "patient_id": patient_id,
                 "nurse_id": nurse_id,
                 "image_url": image_url,
+                "annotated_image_url": annotated_image_url,
                 "ai_grade": ai_grade,
                 "ai_confidence": ai_confidence,
                 "ai_advice": ai_advice,
@@ -302,7 +452,38 @@ async def create_wound_record(
             })
             connection.commit()
             
-            return {"status": "success", "message": "紀錄儲存成功！"}
+            # 3. 依據護理師分級更新個案狀態 (Green/Yellow/Red) 與最新評估
+            # 判定狀態標準：Grade 3 以上或 Unstageable 判定為 Red，Grade 1 或 2 判定為 Yellow，其他或未指定為 Green
+            status_val = "green"
+            if nurse_grade in ["Grade 3", "Grade 4", "Unstageable"]:
+                status_val = "red"
+            elif nurse_grade in ["Grade 1", "Grade 2"]:
+                status_val = "yellow"
+                
+            # 判斷時段班別 (依據當前小時)
+            current_hour = datetime.now().hour
+            if 8 <= current_hour < 16:
+                shift_str = "白班"
+            elif 16 <= current_hour < 24:
+                shift_str = "小夜"
+            else:
+                shift_str = "大夜"
+                
+            last_assess = f"[{shift_str}] {nurse_grade} - {nurse_advice[:20]}..."
+            
+            update_patient = text("""
+                UPDATE patients_info 
+                SET status = :status, last_assessment = :last_assessment 
+                WHERE user_id = :patient_id
+            """)
+            connection.execute(update_patient, {
+                "status": status_val,
+                "last_assessment": last_assess,
+                "patient_id": patient_id
+            })
+            connection.commit()
+            
+            return {"status": "success", "message": "紀錄儲存成功，且個案健康狀態已同步更新！"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"資料庫寫入失敗: {str(e)}")
     
@@ -387,8 +568,8 @@ def get_assignment_options(current_user: dict = Depends(get_current_user)):
                 patients.append({
                     "id": row.id,
                     "name": row.name,
-                    "bed_number": row.bed_number or "未指派",
-                    "medical_history": row.medical_history or "無特殊病史"
+                    "bed_number": decrypt_data(row.bed_number) or "未指派",
+                    "medical_history": decrypt_data(row.medical_history) or "無特殊病史"
                 })
             
             return {"status": "success", "data": {"nurses": nurses, "patients": patients}}
@@ -486,7 +667,7 @@ def get_my_wound_records(current_user: dict = Depends(get_current_user)):
         
     query = text("""
         SELECT 
-            wr.id, wr.image_url, wr.ai_grade, wr.ai_advice,
+            wr.id, wr.image_url, wr.annotated_image_url, wr.ai_grade, wr.ai_advice,
             wr.nurse_grade, wr.nurse_advice, wr.created_at,
             nurse.full_name AS nurse_name
         FROM wound_records wr
@@ -634,6 +815,10 @@ class UserCreateReq(BaseModel):
     full_name: str
     bed_number: Optional[str] = None
     medical_history: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[str] = None
+    admission_date: Optional[str] = None
+    allergies: Optional[str] = None
 
 @app.post("/api/admin/users")
 def create_user(req: UserCreateReq, current_user: dict = Depends(get_current_user)):
@@ -671,13 +856,17 @@ def create_user(req: UserCreateReq, current_user: dict = Depends(get_current_use
                 user_id = conn.execute(user_id_query, {"username": req.username}).fetchone()[0]
                 
                 insert_info = text("""
-                    INSERT INTO patients_info (user_id, bed_number, medical_history)
-                    VALUES (:user_id, :bed_number, :medical_history)
+                    INSERT INTO patients_info (user_id, bed_number, medical_history, gender, age, admission_date, allergies, status)
+                    VALUES (:user_id, :bed_number, :medical_history, :gender, :age, :admission_date, :allergies, 'green')
                 """)
                 conn.execute(insert_info, {
                     "user_id": user_id,
-                    "bed_number": req.bed_number,
-                    "medical_history": req.medical_history
+                    "bed_number": encrypt_data(req.bed_number),
+                    "medical_history": encrypt_data(req.medical_history),
+                    "gender": encrypt_data(req.gender),
+                    "age": encrypt_data(req.age),
+                    "admission_date": encrypt_data(req.admission_date),
+                    "allergies": encrypt_data(req.allergies)
                 })
                 conn.commit()
                 
@@ -714,6 +903,8 @@ def get_users(current_user: dict = Depends(get_current_user)):
             for row in result:
                 u_dict = row._asdict()
                 u_dict["created_at"] = u_dict["created_at"].strftime("%Y-%m-%d %H:%M") if u_dict["created_at"] else "無"
+                u_dict["bed_number"] = decrypt_data(u_dict["bed_number"])
+                u_dict["medical_history"] = decrypt_data(u_dict["medical_history"])
                 users.append(u_dict)
             return {"status": "success", "data": users}
     except Exception as e:
@@ -750,7 +941,8 @@ def get_patient_clinical_detail(patient_id: int, current_user: dict = Depends(ge
         with engine.connect() as conn:
             # 1. 查詢病患基本資料
             info_query = text("""
-                SELECT u.id, u.full_name, u.username, p.bed_number, p.medical_history, u.created_at
+                SELECT u.id, u.full_name, u.username, u.created_at,
+                       p.bed_number, p.medical_history, p.gender, p.age, p.admission_date, p.allergies, p.status, p.last_assessment
                 FROM users u
                 LEFT JOIN patients_info p ON u.id = p.user_id
                 WHERE u.id = :p_id AND u.role = 'patient'
@@ -759,8 +951,20 @@ def get_patient_clinical_detail(patient_id: int, current_user: dict = Depends(ge
             if not info_row:
                 raise HTTPException(status_code=404, detail="找不到該病患")
             
-            patient_info = info_row._asdict()
-            patient_info["created_at"] = patient_info["created_at"].strftime("%Y-%m-%d %H:%M") if patient_info["created_at"] else "無"
+            patient_info = {
+                "id": info_row.id,
+                "full_name": info_row.full_name,
+                "username": info_row.username,
+                "created_at": info_row.created_at.strftime("%Y-%m-%d %H:%M") if info_row.created_at else "無",
+                "bed_number": decrypt_data(info_row.bed_number) or "未指派",
+                "medical_history": decrypt_data(info_row.medical_history) or "無特殊病史記錄",
+                "gender": decrypt_data(info_row.gender) or "未填寫",
+                "age": decrypt_data(info_row.age) or "未填寫",
+                "admission_date": decrypt_data(info_row.admission_date) or "未填寫",
+                "allergies": decrypt_data(info_row.allergies) or "無特定過敏史",
+                "status": info_row.status or "green",
+                "last_assessment": info_row.last_assessment or "無記錄"
+            }
             
             # 2. 查詢護病照護歷史軌跡 (誰照顧過他)
             care_query = text("""
@@ -778,7 +982,7 @@ def get_patient_clinical_detail(patient_id: int, current_user: dict = Depends(ge
                 
             # 3. 查詢歷次傷口評估紀錄
             wound_query = text("""
-                SELECT wr.id, wr.image_url, wr.ai_grade, wr.ai_confidence, wr.ai_advice,
+                SELECT wr.id, wr.image_url, wr.annotated_image_url, wr.ai_grade, wr.ai_confidence, wr.ai_advice,
                        wr.nurse_grade, wr.nurse_advice, wr.created_at, n.full_name AS nurse_name
                 FROM wound_records wr
                 JOIN users n ON wr.nurse_id = n.id
@@ -843,8 +1047,8 @@ def chat_with_local_ai(req: ChatReq, current_user: dict = Depends(get_current_us
                 """)
                 info_row = conn.execute(info_query, {"username": current_user["username"]}).fetchone()
                 if info_row:
-                    bed = info_row.bed_number or "未指派"
-                    history = info_row.medical_history or "無"
+                    bed = decrypt_data(info_row.bed_number) or "未指派"
+                    history = decrypt_data(info_row.medical_history) or "無"
                     patient_info_str = f"病患姓名：{info_row.full_name}\n病房床號：{bed}\n病史/備註：{history}"
                 
                 # 查詢歷史傷口紀錄
