@@ -28,3 +28,10 @@ uploads/wounds/*
 # Temporary / Log files
 *.log
 *.tmp
+
+# YOLO model and secret keys
+yolo11m.pt
+secret.key
+backend_export/
+backend_export.zip
+
