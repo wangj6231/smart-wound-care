@@ -1188,7 +1188,7 @@ def chat_with_local_ai(req: ChatReq, current_user: dict = Depends(get_current_us
             )
         return {"status": "mock", "reply": mock_reply, "error": str(e)}
 
-    # 掛載圖片上傳資料夾為靜態路徑
-    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-    # 將前端資料夾掛載為靜態網頁伺服器
+# 掛載圖片上傳資料夾為靜態路徑
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# 將前端資料夾掛載為靜態網頁伺服器
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
