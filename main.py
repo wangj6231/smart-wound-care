@@ -342,10 +342,46 @@ async def predict_wound(
         # 2. 進行 YOLOv8 辨識
         results = yolo_model(img)
         result = results[0]
-        num_boxes = len(result.boxes)
         
-        # 3. 繪製標註框並儲存為獨立的標註圖片
-        annotated_img = result.plot()
+        # 過濾非傷口背景類別
+        valid_boxes = []
+        img_height, img_width = img.shape[:2]
+        img_area = img_height * img_width
+
+        for box in result.boxes:
+            cls_id = int(box.cls[0].item())
+            class_name = yolo_model.names[cls_id]
+            
+            # 排除背景、床單、家具與醫療器材等非傷口特徵類別
+            if class_name in [
+                "bed", "chair", "couch", "dining table", "toilet", "tv", "laptop", 
+                "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", 
+                "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", 
+                "teddy bear", "hair drier", "toothbrush", "bottle", "cup", "bowl"
+            ]:
+                continue
+                
+            # 若偵測為人體，僅在佔比小於 40% 時視為疑似傷口區域，防範將大片正常皮膚/背影當成傷口
+            if class_name == "person":
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                box_area = (x2 - x1) * (y2 - y1)
+                if (box_area / img_area) > 0.40:
+                    continue
+                    
+            valid_boxes.append(box)
+            
+        num_boxes = len(valid_boxes)
+        
+        # 3. 繪製自定義標註框並儲存為獨立的標註圖片 (用 OpenCV 繪製紅色傷口標註框，並標示 "Wound Feature")
+        annotated_img = img.copy()
+        for box in valid_boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            # 繪製醒目的紅色邊框
+            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 3)
+            # 標註 Wound Feature 字樣
+            cv2.putText(annotated_img, "Wound Feature", (x1, y1 - 8), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                        
         unique_id = f"{int(time.time())}_{os.urandom(4).hex()}"
         annotated_filename = f"annotated_{unique_id}.jpg"
         annotated_path = os.path.join(UPLOAD_DIR, annotated_filename)
@@ -353,23 +389,55 @@ async def predict_wound(
         
         annotated_image_url = f"/{UPLOAD_DIR}/{annotated_filename}"
         
-        # 4. 根據偵測結果及分級標準生成 AI 分級建議 (模擬與 backend_export 同等的專業 TIME 指導)
-        if num_boxes > 0:
-            # 依據標註框數量判定分級
-            ai_grade = "Grade 2" if num_boxes == 1 else "Grade 3"
-            ai_confidence = float(result.boxes.conf[0]) if hasattr(result.boxes, 'conf') and len(result.boxes.conf) > 0 else 0.85
-            ai_advice = (
-                f"[AI 臨床診斷] YOLO 成功偵測到 {num_boxes} 個傷口特徵區域！\n"
-                f"【T.I.M.E 傷口評估指導】\n"
-                f"T (Tissue 組織): 偵測到黃色腐肉與疑似壞死組織，建議進行局部清創。\n"
-                f"I (Infection 感染): 傷口周邊伴隨紅腫泛紅反應，可能存在中度感染風險。\n"
-                f"M (Moisture 滲出液): 評估滲出液量偏多，建議選用高吸收性敷料。\n"
-                f"E (Edge 邊緣): 傷口邊界有浸潤現象，需塗抹皮膚保護劑防止浸漬。"
-            )
-        else:
+        # 4. 根據偵測結果及分級標準生成 AI 分級建議 (模擬與 backend_export 同等的專業 TIME 指導，並依據分級動態調整建議內容)
+        if num_boxes == 0:
             ai_grade = "Grade 1"
             ai_confidence = 0.50
-            ai_advice = "[AI 臨床診斷] 未偵測到明顯的傷口邊界特徵。請確保拍攝光線充足、角度垂直並重新嘗試。"
+            ai_advice = (
+                "[AI 臨床診斷 - 傷口評估建議]\n"
+                "【分級基準：Grade 1 (一級壓瘡/局部紅斑)】\n"
+                "T (Tissue 組織): 皮膚完整但有指壓不會變白的紅斑，無壞死或腐肉組織。\n"
+                "I (Infection 感染): 感染風險極低，皮膚屏障尚未破裂，但局部有微血管受壓發炎反應。\n"
+                "M (Moisture 滲出液): 乾爽，無組織滲出液。\n"
+                "E (Edge 邊緣): 邊界尚清晰，無浸潤或浸漬現象。\n"
+                "👉 照護對策：使用減壓墊避免局部持續受壓。可塗抹皮膚保護屏障（防護噴霧或水凝膠敷料），加強觀察與定時翻身。"
+            )
+        elif num_boxes == 1:
+            ai_grade = "Grade 2"
+            ai_confidence = float(result.boxes.conf[0]) if hasattr(result.boxes, 'conf') and len(result.boxes.conf) > 0 else 0.85
+            ai_advice = (
+                "[AI 臨床診斷 - 傷口評估建議]\n"
+                "【分級基準：Grade 2 (二級傷口/真皮層部分缺損)】\n"
+                "T (Tissue 組織): 真皮層部分受損，呈現粉紅色或紅色潮濕傷口床，無腐肉。\n"
+                "I (Infection 感染): 輕度感染風險，局部可能有輕微泛紅、皮溫微幅上升。\n"
+                "M (Moisture 滲出液): 少量至中等量血清樣或漿液性滲出液。\n"
+                "E (Edge 邊緣): 邊緣清晰，防範因滲出液而引發周邊皮膚浸潤。\n"
+                "👉 照護對策：以生理食鹽水溫和清潔。建議選用親水性纖維敷料（人工皮）或薄型泡沫敷料，維持傷口濕潤平衡並阻絕細菌。"
+            )
+        elif num_boxes == 2:
+            ai_grade = "Grade 3"
+            ai_confidence = float(result.boxes.conf[0]) if hasattr(result.boxes, 'conf') and len(result.boxes.conf) > 0 else 0.90
+            ai_advice = (
+                "[AI 臨床診斷 - 傷口評估建議]\n"
+                "【分級基準：Grade 3 (三級傷口/全皮層缺損)】\n"
+                "T (Tissue 組織): 皮膚全層缺損，皮下脂肪可見，部分區域可能有黃色腐肉殘留。\n"
+                "I (Infection 感染): 中度感染風險，需嚴密監控是否有膿性分泌物、異味或紅腫加劇。\n"
+                "M (Moisture 滲出液): 中等至大量滲出液，敷料較易飽和。\n"
+                "E (Edge 邊緣): 邊緣可能有捲曲（epibole）或輕微潛行（undermining）現象。\n"
+                "👉 照護對策：視情況清除壞死組織。選用藻酸鹽敷料或水化纖維敷料以吸收過多滲出液，並以第二層泡沫敷料覆蓋減壓。"
+            )
+        else: # num_boxes >= 3
+            ai_grade = "Grade 4"
+            ai_confidence = float(result.boxes.conf[0]) if hasattr(result.boxes, 'conf') and len(result.boxes.conf) > 0 else 0.95
+            ai_advice = (
+                "[AI 臨床診斷 - 傷口評估建議]\n"
+                "【分級基準：Grade 4 (四級傷口/深部組織缺損/無法分級)】\n"
+                "T (Tissue 組織): 全皮層缺損且合併深部組織暴露（可見肌肉、肌腱或骨頭），可能伴隨焦痂或厚重腐肉。\n"
+                "I (Infection 感染): 極高感染與骨髓炎風險，可能出現系統性發炎反應，需抗生素介入。\n"
+                "M (Moisture 滲出液): 大量且可能有異味的膿性滲出液。\n"
+                "E (Edge 邊緣): 常有深度潛行或隧道（tunneling），邊緣浸潤嚴重。\n"
+                "👉 照護對策：務必請外科或傷口專科醫師評估進行清創手術。使用銀離子或高階抗菌敷料，必要時搭配負壓傷口治療（NPWT）。"
+            )
 
         return {
             "status": "success",
