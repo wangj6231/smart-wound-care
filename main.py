@@ -151,9 +151,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 # 4. API 路由端點 (Routes)
 # ==========================================
 
-# @app.get("/")
-# def read_root():
-#     return {"status": "success", "message": "智慧傷口照護系統 API 伺服器運行中"}
+from fastapi.responses import RedirectResponse
+
+@app.get("/")
+def read_root():
+    return RedirectResponse(url="/login.html")
 
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
