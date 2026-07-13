@@ -86,10 +86,6 @@
                     <div class="bg-white p-4 rounded shadow-sm">
                         <p class="text-xs text-gray-500 uppercase font-semibold mb-1">標準照護建議</p>
                         <p id="aiAdvice" class="text-sm text-gray-700 leading-relaxed"></p>
-                        <button type="button" id="copyAiBtn" onclick="copyAiAdvice()" class="hidden mt-3 text-xs bg-medical-50 hover:bg-medical-100 text-medical-700 hover:text-medical-800 border border-medical-200 px-3 py-1.5 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-colors w-full">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                            一鍵帶入臨床判定與建議
-                        </button>
                     </div>
                 </div>
             </div>
@@ -229,7 +225,6 @@
                     document.getElementById('aiAdvice').textContent = result.ai_advice;
                     
                     document.getElementById('aiResultBlock').classList.remove('hidden');
-                    document.getElementById('copyAiBtn').classList.remove('hidden');
 
                     // 儲存標註影像的 URL 並更新預覽圖為 AI 標註影像，讓護理師看到辨識紅框
                     lastAnnotatedImageUrl = result.annotated_image_url;
@@ -402,28 +397,7 @@
 
         function closeHistoryModal() {
             document.getElementById('historyModal').classList.add('hidden'); // 隱藏視窗
-        }
-
-        function copyAiAdvice() {
-            const aiGrade = document.getElementById('aiGrade').textContent;
-            const aiAdvice = document.getElementById('aiAdvice').textContent;
-            
-            // 帶入護理師分級下拉選單
-            const nurseGradeSelect = document.getElementById('nurseGrade');
-            if (aiGrade) {
-                for (let i = 0; i < nurseGradeSelect.options.length; i++) {
-                    if (nurseGradeSelect.options[i].value === aiGrade) {
-                        nurseGradeSelect.selectedIndex = i;
-                        break;
-                    }
-                }
-            }
-            
-            // 帶入護理師處置建議文字框
-            if (aiAdvice) {
-                document.getElementById('nurseAdvice').value = aiAdvice;
-            }
-        }
+        }   
     </script>
 
     <!-- Floating AI Chat Widget -->
