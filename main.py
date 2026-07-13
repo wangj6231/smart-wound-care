@@ -343,16 +343,69 @@ async def predict_wound(
         results = yolo_model(img)
         result = results[0]
         
-        # 過濾非傷口背景類別
-        valid_boxes = []
+        # 2.1 進行 CV 顏色特徵辨識 (定位真實的紅/粉紅/黃色傷口區域)
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        # 紅/粉紅傷口 HSV 範圍 (嚴格篩選以隔離健康皮膚)
+        lower_red1 = np.array([0, 65, 50])
+        upper_red1 = np.array([12, 255, 255])
+        lower_red2 = np.array([168, 65, 50])
+        upper_red2 = np.array([180, 255, 255])
+        lower_pink = np.array([140, 60, 50])
+        upper_pink = np.array([167, 255, 255])
+        lower_yellow = np.array([15, 60, 80])
+        upper_yellow = np.array([28, 255, 255])
+        
+        mask = cv2.inRange(hsv, lower_red1, upper_red1) | \
+               cv2.inRange(hsv, lower_red2, upper_red2) | \
+               cv2.inRange(hsv, lower_pink, upper_pink) | \
+               cv2.inRange(hsv, lower_yellow, upper_yellow)
+               
+        # 形態學閉運算與開運算
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         img_height, img_width = img.shape[:2]
         img_area = img_height * img_width
-
+        
+        cv_wound_boxes = []
+        for c in contours:
+            x, y, w, h = cv2.boundingRect(c)
+            box_area = w * h
+            ratio = box_area / img_area
+            # 傷口特徵區域大小通常在圖片面積的 0.2% 到 40% 之間
+            if 0.002 < ratio < 0.40:
+                cv_wound_boxes.append((x, y, x + w, y + h))
+                
+        # 篩選最靠近圖片中心點的傷口框 (醫療拍照通常將傷口置中，能完全排除背景、手指等干擾)
+        best_cv_box = None
+        if cv_wound_boxes:
+            img_center_x = img_width / 2
+            img_center_y = img_height / 2
+            min_dist = float('inf')
+            for x1, y1, x2, y2 in cv_wound_boxes:
+                box_center_x = (x1 + x2) / 2
+                box_center_y = (y1 + y2) / 2
+                dist = np.sqrt((box_center_x - img_center_x)**2 + (box_center_y - img_center_y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_cv_box = (x1, y1, x2, y2)
+                    
+        # 2.2 進行 YOLO 偵測結果過濾，並與 CV 傷口特徵整合
+        valid_boxes = []
+        
+        # 若 CV 定位到正中心有傷口，則以此作為最高優先級標籤
+        if best_cv_box:
+            valid_boxes.append(best_cv_box)
+            
+        # 同時也檢查 YOLO 的偵測 (過濾非傷口背景、醫學器材及大面積背景人體)
         for box in result.boxes:
             cls_id = int(box.cls[0].item())
             class_name = yolo_model.names[cls_id]
             
-            # 排除背景、床單、家具與醫療器材等非傷口特徵類別
+            # 排除非傷口背景類別
             if class_name in [
                 "bed", "chair", "couch", "dining table", "toilet", "tv", "laptop", 
                 "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", 
@@ -361,24 +414,37 @@ async def predict_wound(
             ]:
                 continue
                 
-            # 若偵測為人體，僅在佔比小於 40% 時視為疑似傷口區域，防範將大片正常皮膚/背影當成傷口
+            # 若 YOLO 偵測到人體(手、皮膚)，且面積較小，並與我們 CV 偵測出的傷口區域有重疊，才視為有效框
             if class_name == "person":
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 box_area = (x2 - x1) * (y2 - y1)
+                
+                # 排除大於 40% 的全身背影
                 if (box_area / img_area) > 0.40:
                     continue
                     
-            valid_boxes.append(box)
+                # 檢查是否與 CV 定位的傷口區域重疊 (IoU Overlap)
+                if best_cv_box:
+                    cx1, cy1, cx2, cy2 = best_cv_box
+                    # 計算重疊面積
+                    ix1 = max(x1, cx1)
+                    iy1 = max(y1, cy1)
+                    ix2 = min(x2, cx2)
+                    iy2 = min(y2, cy2)
+                    
+                    if ix1 < ix2 and iy1 < iy2:
+                        # 有重疊，且重合度低於 50% 則加入額外特徵框 (避免與 CV 框完全重疊)
+                        overlap_area = (ix2 - ix1) * (iy2 - iy1)
+                        if overlap_area / min(box_area, (cx2 - cx1)*(cy2 - cy1)) > 0.5:
+                            continue
+                        valid_boxes.append((x1, y1, x2, y2))
             
         num_boxes = len(valid_boxes)
         
         # 3. 繪製自定義標註框並儲存為獨立的標註圖片 (用 OpenCV 繪製紅色傷口標註框，並標示 "Wound Feature")
         annotated_img = img.copy()
-        for box in valid_boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            # 繪製醒目的紅色邊框
+        for x1, y1, x2, y2 in valid_boxes:
             cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 255), 3)
-            # 標註 Wound Feature 字樣
             cv2.putText(annotated_img, "Wound Feature", (x1, y1 - 8), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                         
