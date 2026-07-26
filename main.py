@@ -85,22 +85,156 @@ def decrypt_data(data: str) -> str:
         return data  # 如果解密失敗(例如舊有明文資料)則直接回傳原值
 
 def run_migrations():
-    """執行資料庫欄位遷移，新增臨床 EMR 欄位與加密支援"""
-    columns_to_add_patients = {
-        "gender": "TEXT NULL",
-        "age": "TEXT NULL",
-        "admission_date": "TEXT NULL",
-        "allergies": "TEXT NULL",
-        "status": "VARCHAR(20) DEFAULT 'green'",
-        "last_assessment": "TEXT NULL"
-    }
-    
-    columns_to_add_wound_records = {
-        "annotated_image_url": "VARCHAR(255) NULL"
-    }
+    """執行資料庫欄位遷移，並自動建立表與預設帳號以支援全新部署"""
+    # 建立表格 DDL
+    ddl_queries = [
+        # 1. users
+        """
+        CREATE TABLE IF NOT EXISTS `users` (
+          `id` int(11) NOT NULL AUTO_INCREMENT,
+          `username` varchar(50) NOT NULL COMMENT '帳號',
+          `password_hash` varchar(255) NOT NULL COMMENT '密碼哈希',
+          `role` enum('admin','nurse','patient') NOT NULL COMMENT '角色',
+          `full_name` varchar(50) NOT NULL COMMENT '姓名',
+          `created_at` timestamp NOT NULL DEFAULT current_timestamp() COMMENT '建立時間',
+          PRIMARY KEY (`id`),
+          UNIQUE KEY `username` (`username`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='使用者帳號';
+        """,
+        # 2. patients_info
+        """
+        CREATE TABLE IF NOT EXISTS `patients_info` (
+          `user_id` int(11) NOT NULL COMMENT 'users.id',
+          `bed_number` varchar(20) DEFAULT NULL COMMENT '病床號',
+          `medical_history` text DEFAULT NULL COMMENT '病史',
+          `gender` text DEFAULT NULL,
+          `age` text DEFAULT NULL,
+          `admission_date` text DEFAULT NULL,
+          `allergies` text DEFAULT NULL,
+          `status` varchar(20) DEFAULT 'green',
+          `last_assessment` text DEFAULT NULL,
+          PRIMARY KEY (`user_id`),
+          CONSTRAINT `patients_info_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='病患詳細資料';
+        """,
+        # 3. wound_records
+        """
+        CREATE TABLE IF NOT EXISTS `wound_records` (
+          `id` int(11) NOT NULL AUTO_INCREMENT,
+          `patient_id` int(11) NOT NULL COMMENT '病患 ID',
+          `nurse_id` int(11) NOT NULL COMMENT '護理師 ID',
+          `image_url` varchar(255) NOT NULL COMMENT '圖片 URL',
+          `ai_grade` varchar(20) NOT NULL COMMENT 'AI 判斷等級',
+          `ai_confidence` float NOT NULL COMMENT 'AI 信心指數',
+          `ai_advice` text NOT NULL COMMENT 'AI 照護建議',
+          `nurse_grade` varchar(20) NOT NULL COMMENT '護理師評定等級',
+          `nurse_advice` text NOT NULL COMMENT '護理師照護建議',
+          `created_at` timestamp NOT NULL DEFAULT current_timestamp() COMMENT '評估時間',
+          `annotated_image_url` varchar(255) DEFAULT NULL,
+          PRIMARY KEY (`id`),
+          KEY `patient_id` (`patient_id`),
+          KEY `nurse_id` (`nurse_id`),
+          CONSTRAINT `wound_records_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+          CONSTRAINT `wound_records_ibfk_2` FOREIGN KEY (`nurse_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='傷口評估紀錄';
+        """,
+        # 4. care_assignments
+        """
+        CREATE TABLE IF NOT EXISTS `care_assignments` (
+          `id` int(11) NOT NULL AUTO_INCREMENT,
+          `nurse_id` int(11) NOT NULL COMMENT '護理師 ID',
+          `patient_id` int(11) NOT NULL COMMENT '病患 ID',
+          `shift_type` enum('day','evening','night') NOT NULL COMMENT '班別',
+          `assigned_date` date NOT NULL COMMENT '指派日期',
+          PRIMARY KEY (`id`),
+          UNIQUE KEY `unique_assignment` (`nurse_id`,`patient_id`,`shift_type`,`assigned_date`),
+          KEY `patient_id` (`patient_id`),
+          CONSTRAINT `care_assignments_ibfk_1` FOREIGN KEY (`nurse_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+          CONSTRAINT `care_assignments_ibfk_2` FOREIGN KEY (`patient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='護病照護指派';
+        """,
+        # 5. education_videos
+        """
+        CREATE TABLE IF NOT EXISTS `education_videos` (
+          `id` int(11) NOT NULL AUTO_INCREMENT,
+          `title` varchar(100) NOT NULL COMMENT '影片標題',
+          `video_url` varchar(255) NOT NULL COMMENT '影片網址',
+          `target_wound_grade` varchar(20) DEFAULT NULL COMMENT '適用等級',
+          `description` text DEFAULT NULL COMMENT '描述',
+          `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+          PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='衛教資源';
+        """
+    ]
     
     with engine.connect() as conn:
-        # 1. 移轉 patients_info 欄位
+        # 建立表格
+        for q in ddl_queries:
+            conn.execute(text(q))
+        conn.commit()
+        
+        # 檢查並置入預設測試帳號 (密碼均為 123456)
+        user_check = conn.execute(text("SELECT COUNT(*) FROM users")).fetchone()[0]
+        if user_check == 0:
+            print("[Migration] Database is empty, seeding default accounts...")
+            default_users = [
+                ("admin01", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "admin", "系統管理員"),
+                ("N001", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "nurse", "張護理師"),
+                ("N002", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "nurse", "李護理師"),
+                ("P001", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "patient", "張大明"),
+                ("P002", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "patient", "李小華"),
+                ("N003", "$2b$12$U5rfu1fm5s4j67QJpdKbw.eloqosPT45MU0jbfNahG1OyIYSGE5Pe", "nurse", "王護理師")
+            ]
+            for username, pwd_hash, role, full_name in default_users:
+                conn.execute(
+                    text("INSERT INTO users (username, password_hash, role, full_name) VALUES (:u, :p, :r, :f)"),
+                    {"u": username, "p": pwd_hash, "r": role, "f": full_name}
+                )
+            conn.commit()
+            
+            # 替預設病患建立 patients_info 欄位
+            p001_id = conn.execute(text("SELECT id FROM users WHERE username='P001'")).fetchone()[0]
+            p002_id = conn.execute(text("SELECT id FROM users WHERE username='P002'")).fetchone()[0]
+            
+            conn.execute(
+                text("INSERT INTO patients_info (user_id, bed_number, medical_history, gender, age, admission_date, allergies, status) VALUES (:id, 'B01', :history, '男', '45', '2026-07-01', '無', 'green')"),
+                {"id": p001_id, "history": encrypt_data("高血壓、糖尿病史")}
+            )
+            conn.execute(
+                text("INSERT INTO patients_info (user_id, bed_number, medical_history, gender, age, admission_date, allergies, status) VALUES (:id, 'B02', :history, '女', '32', '2026-07-10', '盤尼西林過敏', 'green')"),
+                {"id": p002_id, "history": encrypt_data("氣喘病史")}
+            )
+            conn.commit()
+
+        # 置入預設衛教影片
+        video_check = conn.execute(text("SELECT COUNT(*) FROM education_videos")).fetchone()[0]
+        if video_check == 0:
+            print("[Migration] Seeding default education videos...")
+            default_videos = [
+                ("傷口清潔與護理技巧", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Grade 1", "如何進行第一級傷口的基礎清潔與防護敷料更換教學。"),
+                ("壓瘡中重度敷料選擇與照護", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Grade 3", "針對第三級傷口（有黃色腐肉與壞死組織）的敷料選用與 TIME 評估標準指引。")
+            ]
+            for title, url, grade, desc in default_videos:
+                conn.execute(
+                    text("INSERT INTO education_videos (title, video_url, target_wound_grade, description) VALUES (:t, :u, :g, :d)"),
+                    {"t": title, "u": url, "g": grade, "d": desc}
+                )
+            conn.commit()
+            
+        # 執行欄位追加檢查 (確保若表格已存在，能自動檢查並增設欄位以相容於升級)
+        columns_to_add_patients = {
+            "gender": "TEXT NULL",
+            "age": "TEXT NULL",
+            "admission_date": "TEXT NULL",
+            "allergies": "TEXT NULL",
+            "status": "VARCHAR(20) DEFAULT 'green'",
+            "last_assessment": "TEXT NULL"
+        }
+        columns_to_add_wound_records = {
+            "annotated_image_url": "VARCHAR(255) NULL"
+        }
+        
+        # 移轉 patients_info 欄位
         for col, col_type in columns_to_add_patients.items():
             check_query = text(f"SHOW COLUMNS FROM patients_info LIKE '{col}'")
             res = conn.execute(check_query).fetchone()
@@ -110,7 +244,7 @@ def run_migrations():
                 conn.execute(alter_query)
                 conn.commit()
                 
-        # 2. 移轉 wound_records 欄位
+        # 移轉 wound_records 欄位
         for col, col_type in columns_to_add_wound_records.items():
             check_query = text(f"SHOW COLUMNS FROM wound_records LIKE '{col}'")
             res = conn.execute(check_query).fetchone()
