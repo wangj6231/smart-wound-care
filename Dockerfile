@@ -1,8 +1,8 @@
 FROM python:3.10-slim
 
-# 安裝 OpenCV 與 ONNX Runtime 執行所需的作業系統底層解碼套件
+# 安裝 OpenCV 與 ONNX Runtime 執行所需的作業系統底層解碼套件 (使用 Debian Bookworm 相容之 libgl1 套件)
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libgthread-2.0-0 \
     procps \
