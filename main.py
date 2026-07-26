@@ -488,7 +488,15 @@ import onnxruntime as ort
 
 class YOLOONNX:
     def __init__(self, model_path="yolo11m.onnx"):
-        self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        # 強制開啟 ONNX 記憶體與執行緒優化以防 Render 512MB OOM 崩潰
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        opts.enable_mem_pattern = False
+        opts.enable_cpu_mem_arena = False
+        
+        self.session = ort.InferenceSession(model_path, sess_options=opts, providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [o.name for o in self.session.get_outputs()]
         self.names = {
