@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 複製專案程式碼、輕量化 ONNX 模型與靜態檔案
 COPY main.py .
 COPY yolo11m.onnx .
-COPY secret.key .
 COPY frontend/ ./frontend/
 
 # 建立 uploads/wounds 資料夾以儲存標註照片

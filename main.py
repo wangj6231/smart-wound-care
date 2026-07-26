@@ -56,12 +56,19 @@ engine = create_engine(DATABASE_URL, connect_args=connect_args)
 # ==========================================
 from cryptography.fernet import Fernet
 
-SECRET_KEY_PATH = "secret.key"
-if not os.path.exists(SECRET_KEY_PATH):
-    with open(SECRET_KEY_PATH, "wb") as key_file:
-        key_file.write(Fernet.generate_key())
-with open(SECRET_KEY_PATH, "rb") as key_file:
-    FERNET_KEY = key_file.read()
+# 優先自環境變數讀取 Fernet 金鑰以利雲端部署持久化，若無則自檔案讀取或動態生成
+import os
+env_fernet_key = os.environ.get("FERNET_KEY")
+if env_fernet_key:
+    FERNET_KEY = env_fernet_key.encode()
+else:
+    SECRET_KEY_PATH = "secret.key"
+    if not os.path.exists(SECRET_KEY_PATH):
+        with open(SECRET_KEY_PATH, "wb") as key_file:
+            key_file.write(Fernet.generate_key())
+    with open(SECRET_KEY_PATH, "rb") as key_file:
+        FERNET_KEY = key_file.read()
+
 cipher_suite = Fernet(FERNET_KEY)
 
 def encrypt_data(data: str) -> str:
