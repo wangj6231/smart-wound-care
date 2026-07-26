@@ -31,6 +31,8 @@ app.add_middleware(
 
 # 優先自環境變數讀取資料庫連線資訊，以支援 Aiven 雲端 MySQL 部署
 DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL and DATABASE_URL.startswith("mysql://"):
+    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
 connect_args = {}
 
 if not DATABASE_URL:
