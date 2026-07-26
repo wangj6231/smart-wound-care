@@ -31,9 +31,18 @@ app.add_middleware(
 
 # 優先自環境變數讀取資料庫連線資訊，以支援 Aiven 雲端 MySQL 部署
 DATABASE_URL = os.environ.get("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.startswith("mysql://"):
-    DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
 connect_args = {}
+
+if DATABASE_URL:
+    # 防呆：改寫 mysql:// 為 mysql+pymysql://
+    if DATABASE_URL.startswith("mysql://"):
+        DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
+    
+    # 防呆：移除 Aiven 預設帶有的 ?ssl-mode=REQUIRED，避免 PyMySQL 發生 TypeError
+    if "?" in DATABASE_URL:
+        if "ssl" in DATABASE_URL.lower():
+            connect_args["ssl"] = {"ssl_mode": "REQUIRED"}
+        DATABASE_URL = DATABASE_URL.split("?")[0]
 
 if not DATABASE_URL:
     db_user = os.environ.get("DB_USER", "root")
@@ -48,7 +57,7 @@ if not DATABASE_URL:
     else:
         DATABASE_URL = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-if os.environ.get("DB_SSL_REQUIRE") == "true" or (DATABASE_URL and "ssl_ca" in DATABASE_URL):
+if os.environ.get("DB_SSL_REQUIRE") == "true" or (DATABASE_URL and "ssl" in DATABASE_URL.lower()):
     connect_args["ssl"] = {"ssl_mode": "REQUIRED"}
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
