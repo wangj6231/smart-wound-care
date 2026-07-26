@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+sqlalchemy
+pymysql
+cryptography
+passlib[bcrypt]
+python-multipart
+pyjwt
+ultralytics
+opencv-python-headless
+numpy
+requests

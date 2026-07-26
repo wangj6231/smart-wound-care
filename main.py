@@ -29,8 +29,27 @@ app.add_middleware(
     allow_headers=["*"],  # 允許所有請求標頭
 )
 
-DATABASE_URL = "mysql+pymysql://root:@127.0.0.1:3306/wound_care_db"
-engine = create_engine(DATABASE_URL)
+# 優先自環境變數讀取資料庫連線資訊，以支援 Aiven 雲端 MySQL 部署
+DATABASE_URL = os.environ.get("DATABASE_URL")
+connect_args = {}
+
+if not DATABASE_URL:
+    db_user = os.environ.get("DB_USER", "root")
+    db_password = os.environ.get("DB_PASSWORD", "")
+    db_host = os.environ.get("DB_HOST", "127.0.0.1")
+    db_port = os.environ.get("DB_PORT", "3306")
+    db_name = os.environ.get("DB_NAME", "wound_care_db")
+    
+    ssl_ca = os.environ.get("DB_SSL_CA")
+    if ssl_ca:
+        DATABASE_URL = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?ssl_ca={ssl_ca}"
+    else:
+        DATABASE_URL = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+if os.environ.get("DB_SSL_REQUIRE") == "true" or (DATABASE_URL and "ssl_ca" in DATABASE_URL):
+    connect_args["ssl"] = {"ssl_mode": "REQUIRED"}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 
 # ==========================================
 # 1.5. Fernet 加密與資料庫遷移
