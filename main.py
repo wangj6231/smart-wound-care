@@ -272,8 +272,21 @@ except Exception as e:
 # ==========================================
 # 2. JWT 與密碼驗證設定
 # ==========================================
-# 設定密碼加密演算法為 bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# 設定密碼加密與比對 (使用標準 bcrypt，避開新版 bcrypt 與 passlib 的 72-byte 檢查 Bug)
+import bcrypt
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """比對明文密碼與資料庫的雜湊密碼"""
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
+
+def hash_password(password: str) -> str:
+    """雜湊密碼"""
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
 # 設定 OAuth2 驗證的登入路徑 (Swagger UI 會用到)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -281,13 +294,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 SECRET_KEY = "wound_care_super_secret_key_change_this" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 # Token 有效期為 60 分鐘
-
-# ==========================================
-# 3. 核心功能函式 (Helper Functions)
-# ==========================================
-def verify_password(plain_password, hashed_password):
-    """比對明文密碼與資料庫的雜湊密碼"""
-    return pwd_context.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict):
     """生成 JWT Token"""
@@ -1114,7 +1120,7 @@ def create_user(req: UserCreateReq, current_user: dict = Depends(get_current_use
                 raise HTTPException(status_code=400, detail="該帳號/員工代碼已存在")
             
             # 加密密碼
-            password_hash = pwd_context.hash(req.password)
+            password_hash = hash_password(req.password)
             
             # 新增使用者
             insert_user = text("""
