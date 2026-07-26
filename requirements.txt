@@ -7,7 +7,7 @@ cryptography
 passlib[bcrypt]
 python-multipart
 pyjwt
-ultralytics
+onnxruntime
 opencv-python-headless
 numpy
 requests

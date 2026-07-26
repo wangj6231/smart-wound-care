@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# 安裝 OpenCV 與 PyTorch 執行所需的作業系統依賴套件
+# 安裝 OpenCV 與 ONNX Runtime 執行所需的作業系統底層解碼套件
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -11,22 +11,21 @@ RUN apt-get update && apt-get install -y \
 # 設定工作目錄
 WORKDIR /app
 
-# 複製並安裝 Python 相依套件
+# 複製並安裝 Python 相依套件 (極簡 ONNX 依賴)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 複製專案程式碼與前端靜態檔案
+# 複製專案程式碼、輕量化 ONNX 模型與靜態檔案
 COPY main.py .
-COPY yolo11m.pt .
-COPY yolo11m_best.pt .
+COPY yolo11m.onnx .
 COPY secret.key .
 COPY frontend/ ./frontend/
 
 # 建立 uploads/wounds 資料夾以儲存標註照片
 RUN mkdir -p uploads/wounds
 
-# 設定 Hugging Face Spaces 要求的監聽 Port 7860
-EXPOSE 7860
+# 設定通訊埠 (Render 會動態指派 $PORT)
+EXPOSE 8000
 
-# 啟動 FastAPI 服務，並設定 Port 為 7860
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+# 啟動 FastAPI 服務，動態綁定 Render 給予的 Port 變數 (預設 8000)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}

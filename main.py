@@ -326,20 +326,126 @@ import time
 import cv2
 import numpy as np
 import base64
-from ultralytics import YOLO
+import onnxruntime as ort
+
+class YOLOONNX:
+    def __init__(self, model_path="yolo11m.onnx"):
+        self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_names = [o.name for o in self.session.get_outputs()]
+        self.names = {
+            0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus',
+            6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant',
+            11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat',
+            16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear',
+            22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag',
+            27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard',
+            32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove',
+            36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle',
+            40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl',
+            46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli',
+            51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake',
+            56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table',
+            61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote',
+            66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster',
+            71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase',
+            76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'
+        }
+
+    def __call__(self, img, conf_threshold=0.25, iou_threshold=0.45):
+        h, w = img.shape[:2]
+        input_size = 640
+        
+        r = min(input_size / h, input_size / w)
+        new_unpad_w, new_unpad_h = int(round(w * r)), int(round(h * r))
+        pad_w = (input_size - new_unpad_w) / 2
+        pad_h = (input_size - new_unpad_h) / 2
+        
+        resized = cv2.resize(img, (new_unpad_w, new_unpad_h), interpolation=cv2.INTER_LINEAR)
+        top, bottom = int(round(pad_h - 0.1)), int(round(pad_h + 0.1))
+        left, right = int(round(pad_w - 0.1)), int(round(pad_w + 0.1))
+        padded = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
+        
+        blob = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)
+        blob = blob.transpose((2, 0, 1))  # HWC -> CHW
+        blob = np.expand_dims(blob, axis=0)  # CHW -> BCHW
+        blob = blob.astype(np.float32) / 255.0
+        
+        outputs = self.session.run(self.output_names, {self.input_name: blob})
+        output = outputs[0][0].T  # (8400, 84)
+        
+        boxes = []
+        confidences = []
+        class_ids = []
+        
+        for row in output:
+            classes_scores = row[4:]
+            class_id = np.argmax(classes_scores)
+            score = classes_scores[class_id]
+            if score > conf_threshold:
+                cx, cy, box_w, box_h = row[:4]
+                x1 = cx - box_w / 2
+                y1 = cy - box_h / 2
+                x1 = (x1 - pad_w) / r
+                y1 = (y1 - pad_h) / r
+                box_w_scaled = box_w / r
+                box_h_scaled = box_h / r
+                
+                boxes.append([int(x1), int(y1), int(box_w_scaled), int(box_h_scaled)])
+                confidences.append(float(score))
+                class_ids.append(int(class_id))
+                
+        indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold, iou_threshold)
+        
+        class BoxObj:
+            def __init__(self, xyxy, cls, conf):
+                self.xyxy = [xyxy]
+                self.cls = [cls]
+                self.conf = [conf]
+                
+        class ResultObj:
+            def __init__(self, boxes_list, names):
+                self.boxes = boxes_list
+                self.names = names
+                
+            def plot(self):
+                annotated = img.copy()
+                for box in self.boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
+                    label = f"{self.names[cls_id]} {conf:.2f}"
+                    cv2.rectangle(annotated, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                    cv2.putText(annotated, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                return annotated
+                
+        final_boxes = []
+        if len(indices) > 0:
+            for idx in indices.flatten():
+                x, y, box_w, box_h = boxes[idx]
+                cls_id = class_ids[idx]
+                conf = confidences[idx]
+                x1 = max(0, x)
+                y1 = max(0, y)
+                x2 = min(w, x + box_w)
+                y2 = min(h, y + box_h)
+                final_boxes.append(BoxObj([x1, y1, x2, y2], cls_id, conf))
+                
+        res_obj = ResultObj(final_boxes, self.names)
+        return [res_obj]
 
 # 建立上傳檔案的資料夾 (如果不存在的話)
 UPLOAD_DIR = "uploads/wounds"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# 載入 YOLOv8 傷口特徵辨識模型
-MODEL_PATH = "yolo11m.pt"
+# 載入 YOLOv8 傷口特徵辨識模型 (ONNX 格式，省去大容量 PyTorch 的記憶體與載入時間)
+MODEL_PATH = "yolo11m.onnx"
 try:
-    yolo_model = YOLO(MODEL_PATH)
-    print("[YOLO] Model loaded successfully!")
+    yolo_model = YOLOONNX(MODEL_PATH)
+    print("[YOLO] ONNX Model loaded successfully!")
 except Exception as e:
     yolo_model = None
-    print(f"[YOLO] Model load failed: {str(e)}")
+    print(f"[YOLO] ONNX Model load failed: {str(e)}")
 
 @app.post("/api/predict")
 async def predict_wound(
