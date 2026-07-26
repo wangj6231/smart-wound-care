@@ -215,13 +215,16 @@ def run_migrations():
             )
             conn.commit()
 
-        # 置入預設衛教影片
+        # 置入預設衛教影片 (清理舊的測試預留影片，防呆插入真實醫學衛教影片)
+        conn.execute(text("DELETE FROM education_videos WHERE video_url LIKE '%dQw4w9WgXcQ%'"))
+        conn.commit()
+        
         video_check = conn.execute(text("SELECT COUNT(*) FROM education_videos")).fetchone()[0]
         if video_check == 0:
             print("[Migration] Seeding default education videos...")
             default_videos = [
-                ("傷口清潔與護理技巧", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Grade 1", "如何進行第一級傷口的基礎清潔與防護敷料更換教學。"),
-                ("壓瘡中重度敷料選擇與照護", "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Grade 3", "針對第三級傷口（有黃色腐肉與壞死組織）的敷料選用與 TIME 評估標準指引。")
+                ("居家傷口照護與換藥指引", "https://www.youtube.com/watch?v=f-B6QcE-XhE", "Grade 1", "本教學影片由醫學中心護理師示範居家傷口換藥與基礎清潔無菌技巧，適合第一級與輕度傷口患者觀看學習。"),
+                ("壓瘡與困難傷口敷料評估", "https://www.youtube.com/watch?v=kex957qBqC8", "Grade 3", "針對中重度困難傷口（第二級至第三級），解說最新 TIME 評估法則及如何選用人工皮、藻酸鹽與高吸收敷料。")
             ]
             for title, url, grade, desc in default_videos:
                 conn.execute(
