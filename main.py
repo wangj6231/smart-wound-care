@@ -337,6 +337,16 @@ from fastapi.responses import RedirectResponse
 def read_root():
     return RedirectResponse(url="/login.html")
 
+@app.get("/api/health")
+def health_check():
+    """健康檢查端點：供外部監控服務使用，並定期向資料庫發送 ping 以防止 Aiven/Render 休眠"""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database offline: {str(e)}")
+
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     """
