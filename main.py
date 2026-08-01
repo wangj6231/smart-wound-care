@@ -337,7 +337,7 @@ from fastapi.responses import RedirectResponse
 def read_root():
     return RedirectResponse(url="/login.html")
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     """健康檢查端點：供外部監控服務使用，並定期向資料庫發送 ping 以防止 Aiven/Render 休眠"""
     try:
