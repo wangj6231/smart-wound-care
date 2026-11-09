@@ -31,7 +31,11 @@ uploads/wounds/*
 
 # YOLO model and secret keys
 yolo11m.pt
+yolo11m_best.pt
 secret.key
 backend_export/
 backend_export.zip
-
+db_info.txt
+push_to_github.bat
+scratch/
+healthcare.db
